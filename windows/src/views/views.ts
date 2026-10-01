@@ -135,10 +135,11 @@ function buildOverview(actions: ViewActions): ViewHost {
   const left = card(null, leftBody, jump);
   const pills = h("div", { class: "pills", tabindex: 0, "aria-label": "Sessions and integrations" });
   const right = card(null, pills);
+  const rightColumn = h("div", { class: "right" }, right);
 
   const el = h("div", { class: "view overview" },
     h("div", { class: "left" }, left),
-    h("div", { class: "right" }, right),
+    rightColumn,
   );
 
   let pillIds = "";
@@ -223,6 +224,8 @@ function buildOverview(actions: ViewActions): ViewHost {
       jump.style.display = detailOpen ? "none" : "";
 
       const others = State.otherTasks;
+      el.classList.toggle("single-session", others.length === 0);
+      rightColumn.style.display = others.length === 0 ? "none" : "";
       const nextOrder = others.map((t) => t.id).join("|");
       const pillKey = others.map((t) => `${t.id}:${t.pillBadge ?? ""}`).join("|");
       if (pillKey !== pillIds) {
