@@ -385,6 +385,11 @@ body {
   width: 322px;
 }
 
+.overview.single-session > .left {
+  flex: 1 1 auto;
+  width: auto;
+}
+
 .overview > .right {
   flex: 1 1 auto;
 }
@@ -404,6 +409,8 @@ body {
 }
 
 .who .name {
+  flex: 1 1 0;
+  min-width: 0;
   font: 600 12px var(--font);
   color: var(--ink);
   white-space: nowrap;
@@ -412,6 +419,7 @@ body {
 }
 
 .who .tool {
+  flex: 0 0 auto;
   font: 400 11px var(--font);
   color: var(--dim-2);
   white-space: nowrap;
