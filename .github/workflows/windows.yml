@@ -5,6 +5,8 @@ name: Windows
 
 on:
   push:
+    branches:
+      - codex-ui-minimal
     tags:
       - 'windows-v*'
   workflow_dispatch:
@@ -92,7 +94,7 @@ jobs:
       # user; the condition keeps them off automatic tag builds while downloads
       # are paused. retention-days: 3 limits exposure.
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'workflow_dispatch' || env.PUBLISH == 'true'
+        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/codex-ui-minimal' || env.PUBLISH == 'true'
         with:
           name: Coucou-Windows-setup
           path: windows/release/Coucou-Windows-${{ steps.pack.outputs.version }}-setup.exe
@@ -103,7 +105,7 @@ jobs:
       # coucou-hook.exe next to coucou.exe, which is exactly this layout, so the
       # portable pair runs with working Claude Code hooks and no installer.
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'workflow_dispatch' || env.PUBLISH == 'true'
+        if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/codex-ui-minimal' || env.PUBLISH == 'true'
         with:
           name: Coucou-Windows-portable
           path: |
