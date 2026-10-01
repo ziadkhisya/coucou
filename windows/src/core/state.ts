@@ -115,9 +115,7 @@ export const DEFAULT_SETTINGS: Settings = {
   soundVolume: 0.12,
   autoCloseInterval: 15,
   absenceInterval: 180,
-  activeIntegrations: [
-    "integration_resend", "integration_n8n", "integration_vercel", "integration_github",
-  ],
+  activeIntegrations: [],
   screen: "primary",
   autostart: false,
   hooksInstalled: false,
@@ -187,7 +185,9 @@ class AppState {
   }
 
   get otherTasks(): AgentTask[] {
-    const others = this.tasks.filter((t) => t.id !== this.focusId);
+    // Keep Codex and live sessions visible without optional service integrations.
+    const others = this.tasks.filter((t) => t.id !== this.focusId &&
+      (!t.isIntegration || t.id === "integration_codex"));
     const sessions = others.filter((t) => !t.isIntegration);
     const integrations = others.filter((t) => t.isIntegration);
     const priority = (state: BotStateName): number => {
@@ -328,7 +328,7 @@ class AppState {
       if (a.isIntegration && !b.isIntegration) return 1;
       return order.indexOf(a.id) - order.indexOf(b.id);
     });
-    if (!this.focusId || !this.tasks.some((t) => t.id === this.focusId)) this.focusId = "integration_claude";
+    if (!this.focusId || !this.tasks.some((t) => t.id === this.focusId)) this.focusId = "integration_codex";
     this.notify();
   }
 
@@ -337,7 +337,7 @@ class AppState {
     const active = this.settings.activeIntegrations;
     if (active.includes(id)) {
       this.settings.activeIntegrations = active.filter((x) => x !== id);
-      if (this.focusId === id) this.focusId = "integration_claude";
+      if (this.focusId === id) this.focusId = "integration_codex";
     } else {
       if (active.length >= 4) return;
       this.settings.activeIntegrations = [...active, id];
