@@ -129,7 +129,8 @@ function buildOverview(actions: ViewActions): ViewHost {
   const sessionState = h("span", { class: "session-state" });
   const activityCount = h("span", { class: "session-count" });
   const meta = h("div", { class: "session-meta" }, who, h("span", { class: "meta-separator", text: "·" }), sessionState, activityCount);
-  const tickerBody = h("div", { class: "card-body" }, projectName, meta, ticker.el);
+  const checklist = h("div", { class: "codex-progress", "aria-live": "polite" });
+  const tickerBody = h("div", { class: "card-body" }, projectName, meta, checklist, ticker.el);
   const leftBody = h("div", { class: "left-body" });
   const jump = h(
     "button",
@@ -151,8 +152,9 @@ function buildOverview(actions: ViewActions): ViewHost {
   let pillOrder = "";
   let detailOpen = false;
   let lastFocus: string | null = null;
-  let mode: "ticker" | "card" | null = null;
+  let mode: "session" | "card" | null = null;
   let cardKey = "";
+  let progressKey = "";
 
   const hooks: IntegrationCardHooks = {
     get detailOpen() {
@@ -174,7 +176,7 @@ function buildOverview(actions: ViewActions): ViewHost {
   return {
     el,
     tick(nowMs: number) {
-      if (mode === "ticker") ticker.tick(nowMs);
+      if (mode === "session" && State.focusTask?.provider !== "codex") ticker.tick(nowMs);
     },
     sync() {
       const task = State.focusTask;
@@ -191,11 +193,12 @@ function buildOverview(actions: ViewActions): ViewHost {
       const sessionActive = Boolean(task && isCodeSession && !task.isIntegration);
 
       if (task && sessionActive) {
-        if (mode !== "ticker") {
+        if (mode !== "session") {
           clear(leftBody);
           leftBody.append(tickerBody);
-          mode = "ticker";
+          mode = "session";
           cardKey = "";
+          progressKey = "";
         }
         tickerBody.classList.toggle("session-done", task.state === "finished" || task.state === "interrupted");
         clear(projectName);
@@ -213,9 +216,40 @@ function buildOverview(actions: ViewActions): ViewHost {
           : task.state === "ratelimit" ? "Rate limited"
           : "Connected";
         sessionState.className = `session-state ${task.state}`;
-        const actionCount = Math.max(task.stepRevision, task.steps.length);
-        activityCount.textContent = actionCount > 0 ? `${actionCount} actions` : "";
-        ticker.sync(task);
+        if (task.provider === "codex") {
+          activityCount.textContent = task.hasStructuredPlan ? `${task.completedPlanCount} / ${task.totalPlanCount} complete` : "";
+          ticker.el.style.display = "none";
+          checklist.style.display = "flex";
+          const nextProgressKey = [task.hasStructuredPlan, task.semanticStatus, task.completedPlanCount,
+            task.totalPlanCount, ...task.planSteps.map((step) => `${step.status}:${step.text}`)].join("|");
+          if (nextProgressKey !== progressKey) {
+            progressKey = nextProgressKey;
+            clear(checklist);
+            if (task.hasStructuredPlan && task.planSteps.length > 0) {
+              const rows = task.planSteps.slice(0, 6);
+              for (const step of rows) {
+                const marker = step.status === "completed" ? "✓" : step.status === "in_progress" ? "●" : "○";
+                checklist.append(h("div", {
+                  class: `plan-row ${step.status}`,
+                  title: step.text,
+                  "aria-label": `${step.status === "completed" ? "Completed" : step.status === "in_progress" ? "In progress" : "Upcoming"}: ${step.text}`,
+                }, h("span", { class: "plan-marker", text: marker }), h("span", { class: "plan-text", text: step.text })));
+              }
+              if (task.planSteps.length > 6) checklist.append(h("div", { class: "plan-more", text: `+${task.planSteps.length - 6} more steps` }));
+            } else {
+              checklist.append(h("div", { class: "semantic-status-row" },
+                h("span", { class: `semantic-dot ${task.state}` }),
+                h("span", { class: "semantic-status-text", text: task.semanticStatus || "Working on the task" }),
+              ));
+            }
+          }
+        } else {
+          activityCount.textContent = Math.max(task.stepRevision, task.steps.length) > 0
+            ? `${Math.max(task.stepRevision, task.steps.length)} actions` : "";
+          checklist.style.display = "none";
+          ticker.el.style.display = "";
+          ticker.sync(task);
+        }
       } else if (task) {
         const info = State.integrations[task.id];
         const key = [
@@ -237,7 +271,7 @@ function buildOverview(actions: ViewActions): ViewHost {
       el.classList.toggle("has-sessions", others.length > 0);
       rightColumn.style.display = others.length === 0 ? "none" : "";
       const nextOrder = others.map((t) => t.id).join("|");
-      const pillKey = others.map((t) => `${t.id}:${t.name}:${t.state}:${t.pillBadge ?? ""}`).join("|");
+      const pillKey = others.map((t) => `${t.id}:${t.name}:${t.state}:${t.pillBadge ?? ""}:${t.completedPlanCount}:${t.totalPlanCount}:${t.semanticStatus}`).join("|");
       if (pillKey !== pillIds) {
         pillIds = pillKey;
         clear(pills);
@@ -258,7 +292,7 @@ function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {
     canvas,
     h("span", { class: "session-pill-copy" },
       h("span", { class: "session-pill-name", text: task.name }),
-      h("span", { class: "session-pill-state", text: `${providerLabel(task)} · ${task.state === "working" ? "Working" : task.state === "thinking" ? "Thinking" : task.state === "approval" ? "Approval" : task.state === "finished" ? "Finished" : task.state === "error" ? "Error" : "Active"}` }),
+      h("span", { class: "session-pill-state", text: `${providerLabel(task)} · ${task.hasStructuredPlan && task.totalPlanCount ? `${task.completedPlanCount}/${task.totalPlanCount}` : task.semanticStatus || (task.state === "working" ? "Working" : task.state === "thinking" ? "Thinking" : task.state === "approval" ? "Approval" : task.state === "finished" ? "Finished" : task.state === "error" ? "Error" : "Active")}` }),
     ),
   );
   pill.setAttribute("aria-label", `Focus ${task.name}, ${task.state}`);

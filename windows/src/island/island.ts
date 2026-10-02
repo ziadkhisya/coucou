@@ -44,6 +44,7 @@ export class Island {
   private botGlow!: HTMLElement;
   private greetingCanvas!: HTMLCanvasElement;
   private miniGrid!: HTMLElement;
+  private compactProgress!: HTMLElement;
   private countdown!: HTMLElement;
   private wakeStrip!: HTMLElement;
 
@@ -176,6 +177,7 @@ export class Island {
     this.botCanvas = h("canvas", { id: "bot-canvas" });
     this.greetingCanvas = h("canvas", { id: "greeting-canvas" });
     this.miniGrid = h("div", { id: "mini-grid" });
+    this.compactProgress = h("div", { id: "compact-progress", "aria-live": "polite" });
     this.countdown = h("div", { id: "countdown" });
 
     this.header = buildHeader(actions);
@@ -210,6 +212,7 @@ export class Island {
       this.botGlow,
       this.botCanvas,
       this.miniGrid,
+      this.compactProgress,
       this.countdown,
     );
 
@@ -860,8 +863,19 @@ export class Island {
 
     // Compact mini grid
     const showGrid = State.mode === "compact";
-    this.miniGrid.style.opacity = showGrid ? "1" : "0";
-    if (showGrid) {
+    const focused = State.focusTask;
+    const showProgress = showGrid && focused?.provider === "codex" && !focused.isIntegration;
+    this.miniGrid.style.opacity = showGrid && !showProgress ? "1" : "0";
+    this.compactProgress.style.opacity = showProgress ? "1" : "0";
+    if (showProgress && focused) {
+      const progress = focused.hasStructuredPlan && focused.totalPlanCount
+        ? `${focused.completedPlanCount}/${focused.totalPlanCount}`
+        : focused.state === "finished" ? "Finished" : focused.semanticStatus || "Working";
+      const label = `${focused.name} · ${progress}`;
+      if (this.compactProgress.textContent !== label) this.compactProgress.textContent = label;
+      this.compactProgress.title = label;
+    }
+    if (showGrid && !showProgress) {
       const others = State.otherTasks.slice(0, 4);
       const key = others.map((t) => t.id).join("|");
       if (this.miniGrid.dataset.key !== key) {

@@ -7,6 +7,12 @@ export type CodeProvider = "claude" | "codex";
 export type CodexAuthMode = "subscription" | "api";
 export type AgentSource = "claudeCode" | "codex" | "n8n";
 export type PillBadge = "approval" | "finished" | "interrupted" | "error";
+export type PlanStepStatus = "pending" | "in_progress" | "completed";
+
+export interface PlanStep {
+  text: string;
+  status: PlanStepStatus;
+}
 
 export interface AgentTask {
   id: string;
@@ -17,6 +23,13 @@ export interface AgentTask {
   stepRevision: number;
   activityOrder: number;
   steps: string[];
+  /** Structured Codex plan, kept independently for each provider/session. */
+  planSteps: PlanStep[];
+  hasStructuredPlan: boolean;
+  completedPlanCount: number;
+  totalPlanCount: number;
+  semanticStatus: string;
+  lastSemanticMessage: string;
   source: AgentSource;
   isIntegration: boolean;
   /** Provider/session identity for dynamically-created coding sessions. */
@@ -63,7 +76,7 @@ export interface SearchResult {
 const task = (
   id: string, name: string, color: string, source: AgentSource,
 ): AgentTask => ({
-  id, name, color, state: "idle", stepIndex: 0, stepRevision: 0, activityOrder: 0, steps: [], source, isIntegration: true, pillBadge: null,
+  id, name, color, state: "idle", stepIndex: 0, stepRevision: 0, activityOrder: 0, steps: [], planSteps: [], hasStructuredPlan: false, completedPlanCount: 0, totalPlanCount: 0, semanticStatus: "Connected", lastSemanticMessage: "", source, isIntegration: true, pillBadge: null,
 });
 
 /** AgentTask.integrationAgents — same ids, names and colours as macOS. */
@@ -244,6 +257,29 @@ class AppState {
     this.notify();
   }
 
+  setPlan(id: string, planSteps: PlanStep[]) {
+    const t = this.tasks.find((x) => x.id === id);
+    if (!t || !planSteps.length) return;
+    t.planSteps = planSteps.map((step) => ({ ...step }));
+    t.hasStructuredPlan = true;
+    t.totalPlanCount = planSteps.length;
+    t.completedPlanCount = planSteps.filter((step) => step.status === "completed").length;
+    const active = planSteps.find((step) => step.status === "in_progress");
+    t.semanticStatus = active?.text ?? (t.completedPlanCount === t.totalPlanCount ? "Plan complete" : "Working through plan");
+    t.lastSemanticMessage = t.semanticStatus;
+    this.touchTask(t);
+    this.notify();
+  }
+
+  setSemanticStatus(id: string, status: string) {
+    const t = this.tasks.find((x) => x.id === id);
+    if (!t || !status) return;
+    t.semanticStatus = status;
+    t.lastSemanticMessage = status;
+    this.touchTask(t);
+    this.notify();
+  }
+
   setPillBadge(id: string, badge: PillBadge | null) {
     const t = this.tasks.find((x) => x.id === id);
     if (!t) return;
@@ -264,6 +300,12 @@ class AppState {
         stepRevision: 0,
         activityOrder: ++this.activityClock,
         steps: [],
+        planSteps: [],
+        hasStructuredPlan: false,
+        completedPlanCount: 0,
+        totalPlanCount: 0,
+        semanticStatus: "Connected",
+        lastSemanticMessage: "",
         source: provider === "codex" ? "codex" : "claudeCode",
         isIntegration: false,
         pillBadge: null,

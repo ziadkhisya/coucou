@@ -165,6 +165,24 @@ body {
   transition: opacity 0.25s ease-in-out;
 }
 
+#compact-progress {
+  position: absolute;
+  left: 68px;
+  right: 22px;
+  top: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  color: #d6dad7;
+  font: 550 11px/1.2 var(--font);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
 /* A mini Mochi: the slot is the body, the canvas is larger and overflows it so
    hands, badges and particles are not cut off. */
 .mini {
@@ -466,6 +484,70 @@ body {
   font: 400 10.5px/1.2 var(--font);
   font-variant-numeric: tabular-nums;
 }
+
+.codex-progress {
+  min-height: 0;
+  max-height: 108px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.plan-row,
+.semantic-status-row {
+  min-width: 0;
+  height: 17px;
+  flex: 0 0 17px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  font: 500 11px/1.2 var(--font);
+}
+
+.plan-marker {
+  width: 12px;
+  flex: 0 0 12px;
+  text-align: center;
+  font: 650 12px/1 var(--font);
+}
+
+.plan-row.completed { color: #98a89d; }
+.plan-row.completed .plan-marker { color: #70c995; }
+.plan-row.in_progress { color: #f0f2f1; font-weight: 650; }
+.plan-row.in_progress .plan-marker { color: #48c58a; }
+.plan-row.pending { color: #858b92; }
+.plan-row.pending .plan-marker { color: #6d737b; }
+
+.plan-text,
+.semantic-status-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.plan-more {
+  height: 13px;
+  margin-left: 19px;
+  color: var(--dim-3);
+  font: 450 9px/1.2 var(--font);
+}
+
+.semantic-status-row { color: #e2e6e3; }
+.semantic-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: #53c78c;
+}
+.semantic-dot.thinking { background: #8aa8ff; }
+.semantic-dot.finished { background: #70c995; }
+.semantic-dot.error, .semantic-dot.ratelimit { background: #f5a524; }
 
 .jump {
   position: absolute;

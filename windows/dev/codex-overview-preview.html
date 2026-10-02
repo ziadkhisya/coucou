@@ -6,7 +6,10 @@
     <title>Coucou Codex overview preview</title>
     <style>
       #preview-backdrop { position: fixed; inset: 0; background: #090a0c; }
-      #preview-controls { position: fixed; z-index: 20; top: 192px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 5px; padding: 7px; border: 1px solid rgba(255,255,255,.09); border-radius: 12px; background: #151619; white-space: nowrap; }
+      #island { width: 640px !important; height: 212px !important; transform: translateX(-50%) !important; }
+      #content { opacity: 1 !important; }
+      .view.on { opacity: 1 !important; }
+      #preview-controls { position: fixed; z-index: 20; top: 244px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 5px; padding: 7px; border: 1px solid rgba(255,255,255,.09); border-radius: 12px; background: #151619; white-space: nowrap; }
       #preview-controls > span { padding: 0 5px; color: #6b7079; font: 600 8px system-ui,sans-serif; letter-spacing: .08em; }
       #preview-controls button { border: 0; border-radius: 7px; padding: 5px 7px; background: transparent; color: #a6abb2; font: 500 9px system-ui,sans-serif; cursor: pointer; }
       #preview-controls button:hover, #preview-controls button.selected { background: #282b30; color: #f5f6f8; }
@@ -17,12 +20,14 @@
     <div id="root"></div>
     <nav id="preview-controls" aria-label="Preview states">
       <span>PREVIEW</span>
-      <button data-state="one">One session</button>
-      <button data-state="long">Long name</button>
-      <button data-state="tool">Tool running</button>
-      <button data-state="finished">Finished</button>
+      <button data-state="five">5-step plan</button>
+      <button data-state="one">One-step fallback</button>
+      <button data-state="long">Long project</button>
+      <button data-state="longplan">Long plan text</button>
+      <button data-state="finished">Finished plan</button>
       <button data-state="two">Two sessions</button>
-      <button data-state="many">Four sessions</button>
+      <button data-state="many">4 sessions</button>
+      <button data-state="update">Live plan update</button>
       <button data-state="approval">Permission</button>
     </nav>
     <script type="module" src="./codex-overview-preview.ts"></script>

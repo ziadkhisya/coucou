@@ -3,6 +3,7 @@
 import { Bridge, onEvent } from "../core/bridge";
 import { Sound } from "../core/sound";
 import { State, type CodeProvider } from "../core/state";
+import { parseUpdatePlan } from "../core/plan";
 import type { Island } from "./island";
 
 const FALLBACK_TASK: Record<CodeProvider, string> = {
@@ -240,6 +241,28 @@ function stepLabel(tool: string, input: Record<string, unknown>): string {
   return label;
 }
 
+function semanticToolStatus(tool: string, input: Record<string, unknown>): string {
+  const name = tool.toLowerCase();
+  const command = typeof input.command === "string" ? input.command.toLowerCase() : "";
+  if (/\b(test|vitest|jest|playwright|cargo test|npm test|pnpm test)\b/.test(command)) return "Running tests";
+  if (/\b(build|compile|cargo build|npm run build|pnpm build)\b/.test(command)) return "Building application";
+  if (/\b(git status|git diff|git log|git commit|git push|git checkout|git switch)\b/.test(command)) return "Updating repository";
+  if (/search|web|fetch|browser/.test(name)) return "Researching";
+  if (/read|list|glob|grep|find|cat/.test(name)) return "Reviewing project files";
+  if (/test|jest|vitest|playwright/.test(name)) return "Running tests";
+  if (/build|compile|cargo|npm|pnpm|yarn/.test(name)) return "Building application";
+  if (/git|commit|push|branch/.test(name)) return "Updating repository";
+  if (/patch|edit|write|replace|multi.?edit/.test(name)) return "Editing files";
+  if (/exec|command|shell|powershell|terminal|bash|cmd/.test(name)) return "Running a project command";
+  return "Working on the task";
+}
+
+function conciseCompletion(message: string | undefined): string {
+  if (!message?.trim()) return "Task finished";
+  const sentence = message.trim().split(/(?<=[.!?])\s|\r?\n/)[0]?.trim();
+  return sentence ? sentence.slice(0, 110) : "Task finished";
+}
+
 function clearApprovalTimeout(requestId: string) {
   const timer = approvalTimers.get(requestId);
   if (timer != null) window.clearTimeout(timer);
@@ -376,6 +399,12 @@ function handleHook(island: Island, payload: HookPayload) {
         task.steps = [];
         task.stepIndex = 0;
         task.stepRevision++;
+        task.planSteps = [];
+        task.hasStructuredPlan = false;
+        task.completedPlanCount = 0;
+        task.totalPlanCount = 0;
+        task.semanticStatus = "Connected";
+        task.lastSemanticMessage = "";
         State.updateTask(taskId, "idle");
         task.pillBadge = null;
       }
@@ -389,7 +418,15 @@ function handleHook(island: Island, payload: HookPayload) {
       State.updateTask(taskId, "thinking");
       State.setPillBadge(taskId, null);
       const asked = payload.prompt ?? payload.message;
-      if (asked) State.appendStep(taskId, asked.slice(0, 60));
+      if (provider === "codex") {
+        task?.planSteps.splice(0);
+        if (task) {
+          task.hasStructuredPlan = false;
+          task.completedPlanCount = 0;
+          task.totalPlanCount = 0;
+        }
+        State.setSemanticStatus(taskId, "Understanding request");
+      } else if (asked) State.appendStep(taskId, asked.slice(0, 60));
       surface("overview", false);
       break;
     }
@@ -397,7 +434,16 @@ function handleHook(island: Island, payload: HookPayload) {
     case "PreToolUse": {
       State.updateTask(taskId, "working");
       const tool = payload.tool_name ?? "Tool";
-      State.appendStep(taskId, stepLabel(tool, payload.tool_input ?? {}));
+      if (provider === "codex") {
+        if (tool.toLowerCase() === "update_plan") {
+          const plan = parseUpdatePlan(payload.tool_input);
+          if (plan) State.setPlan(taskId, plan);
+        } else if (!task?.hasStructuredPlan) {
+          State.setSemanticStatus(taskId, semanticToolStatus(tool, payload.tool_input ?? {}));
+        }
+      } else {
+        State.appendStep(taskId, stepLabel(tool, payload.tool_input ?? {}));
+      }
       surface("overview", false);
       break;
     }
@@ -407,6 +453,7 @@ function handleHook(island: Island, payload: HookPayload) {
         Boolean(payload.tool_error) || (typeof payload.tool_exit_code === "number" && payload.tool_exit_code !== 0);
       if (failed) {
         State.updateTask(taskId, "error");
+        if (provider === "codex") State.setSemanticStatus(taskId, "A step needs attention");
         const detail = payload.tool_error ?? `tool ${payload.tool_status ?? "failed"}${payload.tool_exit_code != null ? ` (exit ${payload.tool_exit_code})` : ""}`;
         State.appendStep(taskId, `⚠ ${detail}`.slice(0, 140));
         State.setPillBadge(taskId, "error");
@@ -420,6 +467,7 @@ function handleHook(island: Island, payload: HookPayload) {
     case "PostToolUseFailure":
     case "tool_result_failed":
       State.updateTask(taskId, "error");
+      if (provider === "codex") State.setSemanticStatus(taskId, "A step needs attention");
       State.appendStep(taskId, `⚠ ${payload.error ?? String(payload.tool_result?.error ?? "tool failed")}`.slice(0, 140));
       State.setPillBadge(taskId, "error");
       Sound.play("error");
@@ -430,10 +478,12 @@ function handleHook(island: Island, payload: HookPayload) {
       const lower = message.toLowerCase();
       if (lower.includes("rate limit") || lower.includes("limite d")) {
         State.updateTask(taskId, "ratelimit");
+        if (provider === "codex") State.setSemanticStatus(taskId, "Waiting for rate limit");
         Sound.play("rate");
       } else if (message.endsWith("?")) {
         State.updateTask(taskId, "question");
-        State.appendStep(taskId, message);
+        if (provider === "codex") State.setSemanticStatus(taskId, "Needs your input");
+        else State.appendStep(taskId, message);
       }
       break;
     }
@@ -442,7 +492,8 @@ function handleHook(island: Island, payload: HookPayload) {
       cancelApprovalForEvent(island, provider, sessionId, payload.turn_id);
       State.updateTask(taskId, "finished");
       const message = payload.last_assistant_message ?? payload.message;
-      if (message) State.appendStep(taskId, message.slice(0, 120));
+      if (provider === "codex") State.setSemanticStatus(taskId, conciseCompletion(message));
+      else if (message) State.appendStep(taskId, message.slice(0, 120));
       Sound.play("finish");
       if (focused) surface("finished", true);
       else State.setPillBadge(taskId, "finished");
@@ -465,7 +516,8 @@ function handleHook(island: Island, payload: HookPayload) {
     case "Interrupted":
       cancelApprovalForEvent(island, provider, sessionId, payload.turn_id);
       State.updateTask(taskId, "interrupted");
-      State.appendStep(taskId, "Interrupted");
+      if (provider === "codex") State.setSemanticStatus(taskId, "Work stopped");
+      else State.appendStep(taskId, "Interrupted");
       State.setPillBadge(taskId, "interrupted");
       if (runtime?.finishTimer != null) window.clearTimeout(runtime.finishTimer);
       if (runtime) runtime.finishTimer = null;
@@ -474,7 +526,8 @@ function handleHook(island: Island, payload: HookPayload) {
     case "StopFailure":
       cancelApprovalForEvent(island, provider, sessionId, payload.turn_id);
       State.updateTask(taskId, "error");
-      if (payload.error) State.appendStep(taskId, payload.error.slice(0, 120));
+      if (provider === "codex") State.setSemanticStatus(taskId, "Task stopped with an error");
+      else if (payload.error) State.appendStep(taskId, payload.error.slice(0, 120));
       Sound.play("error");
       if (focused) surface("error", true);
       else State.setPillBadge(taskId, "error");
@@ -497,11 +550,13 @@ function handleHook(island: Island, payload: HookPayload) {
       break;
 
     case "SubagentStart":
-      State.appendStep(taskId, "+ subagent");
+      if (provider === "codex") State.setSemanticStatus(taskId, "Working with a subagent");
+      else State.appendStep(taskId, "+ subagent");
       break;
 
     case "SubagentStop":
-      State.appendStep(taskId, "• subagent done");
+      if (provider === "codex") State.setSemanticStatus(taskId, "Subagent work complete");
+      else State.appendStep(taskId, "• subagent done");
       break;
 
     case "PermissionRequest": {
@@ -527,6 +582,7 @@ function handleHook(island: Island, payload: HookPayload) {
       State.setFocus(taskId);
       if (requestId) void Bridge.approvalAck(requestId);
       State.updateTask(taskId, "approval");
+      if (provider === "codex") State.setSemanticStatus(taskId, "Waiting for approval");
       State.isPinned = true;
       Sound.play("approval");
       island.alert("approval");

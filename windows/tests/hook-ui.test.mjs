@@ -69,7 +69,7 @@ await build({
   ],
 });
 
-const { State, codeSessionTaskId, declinePendingApproval, registerHookHandlers, unseenTickerSteps } = await import(pathToFileURL(bundledEntry).href);
+const { State, codeSessionTaskId, declinePendingApproval, registerHookHandlers, unseenTickerSteps, parseUpdatePlan } = await import(pathToFileURL(bundledEntry).href);
 
 const islandCalls = [];
 const island = {
@@ -109,6 +109,51 @@ after(async () => {
   await rm(temporary, { recursive: true, force: true });
 });
 
+test("update_plan parser normalizes step status and rejects malformed data", () => {
+  assert.deepEqual(parseUpdatePlan({ plan: { steps: [
+    { step: "Inspect files", status: "completed" },
+    { step: "Implement changes", status: "inProgress" },
+    { step: "Validate", status: "pending" },
+  ] } }), [
+    { text: "Inspect files", status: "completed" },
+    { text: "Implement changes", status: "in_progress" },
+    { text: "Validate", status: "pending" },
+  ]);
+  assert.equal(parseUpdatePlan({ steps: [{ text: "Missing status" }] }), null);
+  assert.equal(parseUpdatePlan(null), null);
+});
+
+test("Codex plans are session-scoped, renderable progress and survive Stop unchanged", () => {
+  const plan = { steps: [
+    { text: "Inspect implementation", status: "completed" },
+    { text: "Modify event handling", status: "in_progress" },
+    { text: "Build UI", status: "pending" },
+    { text: "Test integration", status: "pending" },
+  ] };
+  dispatchHook({ provider: "codex", hook_event_name: "SessionStart", session_id: "plan-a", cwd: "C:/work/alpha" });
+  dispatchHook({ provider: "codex", hook_event_name: "PreToolUse", session_id: "plan-a", turn_id: "turn-a", cwd: "C:/work/alpha", tool_name: "update_plan", tool_input: plan });
+  dispatchHook({ provider: "codex", hook_event_name: "SessionStart", session_id: "plan-b", cwd: "C:/work/beta" });
+
+  const first = sessionTask("codex", "plan-a");
+  const second = sessionTask("codex", "plan-b");
+  assert.equal(first.completedPlanCount, 1);
+  assert.equal(first.totalPlanCount, 4);
+  assert.equal(second.hasStructuredPlan, false);
+  assert.equal(first.semanticStatus, "Modify event handling");
+
+  dispatchHook({ provider: "codex", hook_event_name: "Stop", session_id: "plan-a", turn_id: "turn-a", last_assistant_message: "Completed validation." });
+  assert.equal(first.planSteps.filter((step) => step.status === "completed").length, 1);
+  assert.equal(first.planSteps.filter((step) => step.status === "pending").length, 2);
+  assert.equal(first.semanticStatus, "Completed validation.");
+});
+
+test("Codex fallback status is semantic and never exposes the command", () => {
+  dispatchHook({ provider: "codex", hook_event_name: "PreToolUse", session_id: "semantic-fallback", cwd: "C:/work/fallback", tool_name: "Bash", tool_input: { command: "Get-Content secret.txt" } });
+  const task = sessionTask("codex", "semantic-fallback");
+  assert.equal(task.semanticStatus, "Running a project command");
+  assert.equal(task.steps.length, 0);
+});
+
 test("same session id stays isolated across Claude and Codex providers", () => {
   dispatchHook({
     provider: "claude", hook_event_name: "UserPromptSubmit", session_id: "shared-session",
@@ -129,7 +174,8 @@ test("same session id stays isolated across Claude and Codex providers", () => {
   assert.equal(claude.name, "claude-project");
   assert.equal(codex.name, "codex-project");
   assert.deepEqual(claude.steps, ["Claude task"]);
-  assert.deepEqual(codex.steps, ["Codex task"]);
+  assert.equal(codex.semanticStatus, "Understanding request");
+  assert.deepEqual(codex.steps, []);
 });
 
 test("live sessions lead the pills and the first one gets focus without stealing it later", () => {
@@ -216,7 +262,8 @@ test("a delayed finish timer cannot clear a newer run", () => {
 
   assert.equal(task.state, "thinking");
   assert.equal(task.pillBadge, null);
-  assert.deepEqual(task.steps.slice(-1), ["second"]);
+  assert.equal(task.semanticStatus, "Understanding request");
+  assert.deepEqual(task.steps, []);
 });
 
 test("a turnless delayed Stop cannot finish a known newer turn", () => {
@@ -251,7 +298,8 @@ test("a delayed SessionStart cannot clear an already active turn", () => {
   dispatchHook({ provider: "codex", hook_event_name: "SessionStart", session_id: "late-session-start", cwd: "C:/work/late-start" });
 
   assert.equal(task.state, "thinking");
-  assert.deepEqual(task.steps, ["current work"]);
+  assert.equal(task.semanticStatus, "Understanding request");
+  assert.deepEqual(task.steps, []);
 });
 
 test("same-turn tool events after Stop stay terminal until a new turn", () => {
@@ -265,7 +313,8 @@ test("same-turn tool events after Stop stay terminal until a new turn", () => {
   dispatchHook({ provider: "codex", hook_event_name: "UserPromptSubmit", session_id: "terminal-turn", turn_id: "turn-next", cwd: "C:/work/terminal", prompt: "next turn" });
   dispatchHook({ provider: "codex", hook_event_name: "PostToolUse", session_id: "terminal-turn", turn_id: "turn-ended", tool_name: "Bash", tool_status: "success" });
   assert.equal(task.state, "thinking");
-  assert.equal(task.steps.at(-1), "next turn");
+  assert.equal(task.semanticStatus, "Understanding request");
+  assert.deepEqual(task.steps, []);
 });
 
 test("an overlapping approval is declined without replacing the visible request", () => {
