@@ -26,6 +26,7 @@ export interface BootInfo {
   screen: { x: number; y: number; width: number; height: number; scale: number };
   version: string;
   hookPath: string;
+  autoStarted: boolean;
 }
 
 export const Bridge = {
@@ -103,6 +104,10 @@ export const Bridge = {
 
   /** Tray → Pause. Stops the integration pollers, not just the island. */
   setPaused: (paused: boolean) => call<void>("set_paused", { paused }),
+
+  setCodexUsageDemand: (expanded: boolean, active: boolean) =>
+    call<void>("codex_usage_demand", { expanded, active }),
+  refreshCodexUsage: () => call<void>("refresh_codex_usage"),
 };
 
 export interface IntegrationUpdate {

@@ -45,6 +45,7 @@ pub struct BootInfo {
     screen: ScreenInfo,
     version: String,
     hook_path: String,
+    auto_started: bool,
 }
 
 #[tauri::command]
@@ -58,6 +59,7 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
         screen,
         version: env!("CARGO_PKG_VERSION").to_string(),
         hook_path: settings::hook_exe_path().to_string_lossy().to_string(),
+        auto_started: std::env::args().any(|arg| arg == "--autostart"),
     }
 }
 
@@ -440,8 +442,19 @@ fn open_settings_window(app: AppHandle) {
     show_settings_window(&app);
 }
 
+#[tauri::command]
+fn codex_usage_demand(controller: State<'_, codex_rate_limits::UsageController>, expanded: bool, active: bool) {
+    controller.set_demand(expanded, active);
+}
+
+#[tauri::command]
+fn refresh_codex_usage(controller: State<'_, codex_rate_limits::UsageController>) {
+    controller.refresh();
+}
+
 pub fn run() {
     let loaded = settings::load();
+    let auto_started = std::env::args().any(|arg| arg == "--autostart");
     let gate = Arc::new(PollGate::new());
 
     tauri::Builder::default()
@@ -450,7 +463,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
-            None,
+            Some(vec!["--autostart"]),
         ))
         .manage(Shared {
             settings: Mutex::new(loaded.clone()),
@@ -459,6 +472,7 @@ pub fn run() {
         .manage(Pending::default())
         .manage(Chat::default())
         .manage(codex::Chat::default())
+        .manage(codex_rate_limits::UsageController::default())
         .invoke_handler(tauri::generate_handler![
             boot,
             save_settings,
@@ -488,6 +502,8 @@ pub fn run() {
             open_n8n,
             open_settings_window,
             set_paused,
+            codex_usage_demand,
+            refresh_codex_usage,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -497,12 +513,18 @@ pub fn run() {
 
             if let Some(win) = island::window(&handle) {
                 island::make_non_activating(&win);
-                island::apply_geometry(&handle, &loaded.screen, false);
+                island::apply_geometry(&handle, &loaded.screen, auto_started);
                 let _ = win.show();
             }
-            gate.collapsed.store(false, Ordering::Relaxed);
-            gate.set_active(true);
+            gate.collapsed.store(auto_started, Ordering::Relaxed);
+            gate.set_active(!auto_started);
             island::spawn_cursor_poll(handle.clone(), gate.clone());
+
+            if loaded.autostart {
+                if let Err(err) = app.autolaunch().enable() {
+                    log::line(format!("autostart registration failed: {err}"));
+                }
+            }
 
             log::line(format!(
                 "--- Coucou {} started ---",

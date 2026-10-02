@@ -3,6 +3,21 @@ import type { PlanStep, PlanStepStatus } from "./state";
 const MAX_STEPS = 20;
 const MAX_TEXT = 240;
 
+/** Strip a leading status marker when the plan icon already conveys it. */
+export function normalizePlanStepText(value: string): string {
+  let text = value.replace(/\s+/g, " ").trim();
+  for (let i = 0; i < 3; i++) {
+    const next = text
+      .replace(/^\s*(?:\[(?:✓|✔|x|X| )\]|[✓✔●○])\s*/, "")
+      .replace(/^\s*(?:completed|complete|currently|current|pending|upcoming)\s*:\s*/i, "")
+      .replace(/^\s*step\s+\d+\s*[:.)-]\s*/i, "")
+      .trim();
+    if (next === text) break;
+    text = next;
+  }
+  return text;
+}
+
 /**
  * Adapt the update_plan input carried by a Codex PreToolUse hook into Coucou's
  * session plan. Codex CLI 0.159.2 ships an app-server
@@ -31,7 +46,9 @@ export function parseUpdatePlan(input: unknown): PlanStep[] | null {
         : null;
       const status = normalizeStatus(row.status ?? row.state);
       if (!text?.trim() || !status) return null;
-      parsed.push({ text: text.trim().slice(0, MAX_TEXT), status });
+      const cleanText = normalizePlanStepText(text);
+      if (!cleanText) return null;
+      parsed.push({ text: cleanText.slice(0, MAX_TEXT), status });
     }
     return parsed;
   } catch {

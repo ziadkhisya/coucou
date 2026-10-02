@@ -29,7 +29,7 @@ function humanize(value: string): string {
 export function deriveProjectName(identity: ProjectIdentity): string {
   const remote = typeof identity.gitRemote === "string" ? identity.gitRemote.trim() : "";
   const remoteRepo = remote.match(/(?:[:/])([^/:]+?)(?:\.git)?$/i)?.[1] ?? "";
-  const ordered = [remoteRepo, identity.projectName, identity.gitRootName, identity.cwd];
+  const ordered = [identity.projectName, remoteRepo, identity.gitRootName, identity.cwd];
   for (const value of ordered) {
     const clean = candidate(value);
     if (clean) return humanize(clean);

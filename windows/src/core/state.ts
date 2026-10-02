@@ -113,6 +113,11 @@ export interface UsageWindow {
   remainingPercent: number;
   windowDurationMins: number | null;
   resetsAt: number | null;
+  limitId: string | null;
+  source: "snapshot" | "notification";
+  receivedAt: number;
+  emittedAt: number | null;
+  requestStartedAt: number | null;
 }
 
 /** Account-level Codex usage snapshot. Raw backend percentages are retained. */
@@ -120,9 +125,13 @@ export interface CodexUsage {
   available: boolean;
   limitId?: string;
   planType?: string | null;
-  primary?: UsageWindow;
-  secondary?: UsageWindow;
+  fiveHour?: UsageWindow;
+  weekly?: UsageWindow;
+  source?: "snapshot" | "notification" | "unavailable";
   fetchedAt: number;
+  lastFullReadAt?: number | null;
+  lastRollingUpdateAt?: number | null;
+  lastErrorAt?: number | null;
   raw?: unknown;
   error?: string | null;
 }
@@ -261,11 +270,11 @@ class AppState {
     if (!this.focusId || (focused?.isIntegration && focused.state === "idle")) this.setFocus(id);
   }
 
-  updateTask(id: string, state: BotStateName) {
+  updateTask(id: string, state: BotStateName, eventAt = Date.now()) {
     const t = this.tasks.find((x) => x.id === id);
     if (!t) return;
     t.state = state;
-    if (["finished", "interrupted", "error"].includes(state)) t.taskFinishedAt ??= Date.now();
+    if (["finished", "interrupted", "error"].includes(state)) t.taskFinishedAt ??= eventAt;
     else if (["working", "thinking", "searching", "approval", "question", "ratelimit"].includes(state)) t.taskFinishedAt = null;
     this.touchTask(t);
     this.notify();

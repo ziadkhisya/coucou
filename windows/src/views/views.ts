@@ -12,7 +12,8 @@ import { buildPrompt } from "./chat";
 import { buildChoose, buildUpload, buildUploading } from "./upload";
 import { renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
 import { formatTaskDuration, taskElapsedMs } from "../core/timer";
-import { displayPercent, formatResetTime } from "../core/usage";
+import { sessionRailContent } from "../core/session-rail";
+import { displayPercent, formatResetTime, usageFreshness, usageSeverity } from "../core/usage";
 
 export interface ViewActions {
   setView(v: IslandViewName): void;
@@ -129,7 +130,12 @@ function buildOverview(actions: ViewActions): ViewHost {
   const projectName = h("div", { class: "session-name" });
   const taskTimer = h("span", { class: "task-timer" });
   const taskTitle = h("div", { class: "task-title" });
-  const usageSummary = h("span", { class: "usage-summary" });
+  const usageFiveHour = h("span", { class: "usage-window" });
+  const usageDivider = h("span", { class: "usage-divider", text: "·" });
+  const usageWeekly = h("span", { class: "usage-window" });
+  const usageFreshnessLabel = h("span", { class: "usage-freshness" });
+  const usageSummary = h("span", { class: "usage-summary", "aria-label": "Codex account usage" },
+    usageFiveHour, usageDivider, usageWeekly, usageFreshnessLabel);
   const who = h("div", { class: "session-provider" });
   const sessionState = h("span", { class: "session-state" });
   const activityCount = h("span", { class: "session-count" });
@@ -169,6 +175,7 @@ function buildOverview(actions: ViewActions): ViewHost {
   let planMore: HTMLElement | null = null;
   let completionNote: HTMLElement | null = null;
   let lastTimerSecond = -1;
+  let lastRailTimerSecond = -1;
 
   const hooks: IntegrationCardHooks = {
     get detailOpen() {
@@ -198,6 +205,21 @@ function buildOverview(actions: ViewActions): ViewHost {
         if (second !== lastTimerSecond) {
           lastTimerSecond = second;
           taskTimer.textContent = formatTaskDuration(elapsed);
+        }
+      }
+      if (State.mode === "expanded" && mode === "session") {
+        const second = Math.floor(Date.now() / 1000);
+        if (second !== lastRailTimerSecond) {
+          lastRailTimerSecond = second;
+          for (const pill of pills.querySelectorAll<HTMLButtonElement>(".session-pill")) {
+            const task = State.tasks.find((item) => item.id === pill.dataset.taskId);
+            const timer = pill.querySelector<HTMLElement>(".session-pill-timer");
+            if (!task || !timer) continue;
+            const elapsed = taskElapsedMs(task);
+            const next = formatTaskDuration(elapsed);
+            if (timer.textContent !== next) timer.textContent = next;
+            timer.style.display = task.taskStartedAt == null ? "none" : "";
+          }
         }
       }
     },
@@ -244,17 +266,30 @@ function buildOverview(actions: ViewActions): ViewHost {
         taskTimer.style.display = task.taskStartedAt == null ? "none" : "";
         lastTimerSecond = elapsed == null ? -1 : Math.floor(elapsed / 1000);
         const usage = State.codexUsage;
-        const usageBits: string[] = [];
-        if (usage?.available) {
-          if (usage.primary) usageBits.push(`5h ${displayPercent(usage.primary.remainingPercent)}%`);
-          if (usage.secondary) usageBits.push(`Week ${displayPercent(usage.secondary.remainingPercent)}%`);
-          usageSummary.title = [
-            usage.primary ? `5h ${displayPercent(usage.primary.remainingPercent)}% left · ${formatResetTime(usage.primary.resetsAt)}` : "",
-            usage.secondary ? `Week ${displayPercent(usage.secondary.remainingPercent)}% left · ${formatResetTime(usage.secondary.resetsAt)}` : "",
+        const previewClock = (globalThis as typeof globalThis & { __COUCOU_PREVIEW_NOW?: number }).__COUCOU_PREVIEW_NOW;
+        const usageNow = previewClock ?? Date.now();
+        const freshness = usageFreshness(usage, usageNow);
+        const five = usage?.fiveHour;
+        const week = usage?.weekly;
+        const setWindow = (node: HTMLElement, label: string, window: typeof five) => {
+          node.textContent = `${label} ${usage?.available && window ? `${displayPercent(window.remainingPercent)}%` : "—"}`;
+          node.className = `usage-window ${window ? `usage-${usageSeverity(window.remainingPercent)}` : "usage-unavailable"}${freshness === "stale" ? " usage-stale" : ""}`;
+          node.title = window ? `${label} ${displayPercent(window.remainingPercent)}% left · ${formatResetTime(window.resetsAt)}` : `${label} usage unavailable`;
+        };
+        setWindow(usageFiveHour, "5h", five);
+        setWindow(usageWeekly, "Week", week);
+        usageDivider.style.display = usage?.available ? "" : "none";
+        usageWeekly.style.display = usage?.available ? "" : "none";
+        usageFreshnessLabel.textContent = freshness === "unavailable" ? "Usage unavailable"
+          : freshness === "stale" ? `Updated ${formatUsageAge(usageNow - (usage?.fetchedAt ?? usageNow))} ago` : "";
+        usageFreshnessLabel.className = `usage-freshness ${freshness}`;
+        usageFreshnessLabel.style.display = freshness === "fresh" ? "none" : "";
+        usageSummary.title = freshness === "unavailable" ? "Codex account usage unavailable"
+          : [
+            five ? `5h ${displayPercent(five.remainingPercent)}% left · ${formatResetTime(five.resetsAt)}` : "5h usage unavailable",
+            week ? `Week ${displayPercent(week.remainingPercent)}% left · ${formatResetTime(week.resetsAt)}` : "Weekly usage unavailable",
+            freshness === "stale" ? `Last updated ${formatUsageAge(usageNow - (usage?.fetchedAt ?? usageNow))} ago` : "",
           ].filter(Boolean).join("\n");
-        }
-        usageSummary.textContent = usageBits.join(" · ");
-        usageSummary.style.display = usageBits.length ? "" : "none";
         clear(who);
         who.append(h("span", { class: "provider-name", text: providerLabel(task) }));
         sessionState.textContent = task.state === "approval" ? "Needs approval"
@@ -326,16 +361,22 @@ function buildOverview(actions: ViewActions): ViewHost {
 
 function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {
   const canvas = createMiniBot(task, 20);
+  const summary = sessionRailContent(task);
+  const title = summary.title;
   const pill = h(
     "button",
-    { class: "session-pill", type: "button", title: task.name, onclick: () => actions.setFocus(task.id) },
+    { class: "session-pill", type: "button", title, onclick: () => actions.setFocus(task.id) },
     canvas,
     h("span", { class: "session-pill-copy" },
-      h("span", { class: "session-pill-name", text: task.name }),
-      h("span", { class: "session-pill-state", text: pillProgressLabel(task) }),
+      h("span", { class: "session-pill-name-row" },
+        h("span", { class: "session-pill-name", text: task.name, title: task.name }),
+        h("span", { class: "session-pill-timer", text: summary.timer }),
+      ),
+      h("span", { class: "session-pill-state", text: summary.status, title: summary.status }),
     ),
   );
-  pill.setAttribute("aria-label", `Focus ${task.name}, ${pillProgressLabel(task)}`);
+  pill.dataset.taskId = task.id;
+  pill.setAttribute("aria-label", `Focus ${title}`);
   pill.style.setProperty("--session-color", task.color);
   pill.style.borderColor = `${task.color}24`;
 
@@ -427,28 +468,16 @@ function syncCodexProgress(task: AgentTask, parent: HTMLElement, nodes: Progress
       nodes.completionNote = h("div", { class: "plan-completion-note" });
       parent.append(nodes.completionNote);
     }
-    nodes.completionNote.textContent = `Turn finished · ${pending} ${pending === 1 ? "step" : "steps"} not marked complete`;
+    nodes.completionNote.textContent = `Turn finished · ${pending} ${pending === 1 ? "step" : "steps"} still pending`;
   } else {
     nodes.completionNote?.remove();
     nodes.completionNote = null;
   }
 }
 
-function pillProgressLabel(task: AgentTask): string {
-  const state = task.state === "working" ? "Working"
-    : task.state === "thinking" ? "Thinking"
-    : task.state === "approval" ? "Needs approval"
-    : task.state === "finished" ? "Finished"
-    : task.state === "interrupted" ? "Stopped"
-    : task.state === "error" ? "Error"
-    : task.state === "question" ? "Needs input"
-    : task.state === "ratelimit" ? "Rate limited"
-    : "Connected";
-  if (task.state === "approval") return state;
-  if (task.hasStructuredPlan && task.totalPlanCount) return `${task.completedPlanCount}/${task.totalPlanCount} · ${formatTaskDuration(taskElapsedMs(task)) || state}`;
-  const semantic = task.currentStatus && !["Connected", "Plan complete"].includes(task.currentStatus)
-    ? task.currentStatus : state;
-  return [semantic, formatTaskDuration(taskElapsedMs(task))].filter(Boolean).join(" · ");
+function formatUsageAge(ageMs: number): string {
+  const minutes = Math.max(0, Math.floor(ageMs / 60_000));
+  return minutes < 1 ? "moments" : `${minutes}m`;
 }
 
 // ── Empty ─────────────────────────────────────────────────────────────────────

@@ -9,6 +9,9 @@
       #island { width: 640px !important; transform: translateX(-50%) !important; }
       #content { opacity: 1 !important; }
       .view.on { opacity: 1 !important; }
+      body.preview-collapsed #island { width: 288px !important; }
+      body.preview-collapsed #content { opacity: 0 !important; pointer-events: none !important; }
+      body.preview-collapsed #compact-progress { opacity: 1 !important; }
       #preview-controls { position: fixed; z-index: 20; top: 244px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 5px; padding: 7px; border: 1px solid rgba(255,255,255,.09); border-radius: 12px; background: #151619; white-space: nowrap; }
       #preview-controls > span { padding: 0 5px; color: #6b7079; font: 600 8px system-ui,sans-serif; letter-spacing: .08em; }
       #preview-controls button { border: 0; border-radius: 7px; padding: 5px 7px; background: transparent; color: #a6abb2; font: 500 9px system-ui,sans-serif; cursor: pointer; }
@@ -24,17 +27,24 @@
       <button data-state="one">One-step fallback</button>
       <button data-state="usage">5h + week</button>
       <button data-state="low">Low remaining</button>
+      <button data-state="mixed">Mixed severity</button>
+      <button data-state="stale">Stale usage</button>
       <button data-state="unavailable">Usage unavailable</button>
       <button data-state="overhour">Timer &gt; 1 hour</button>
       <button data-state="longtitle">Long task title</button>
       <button data-state="long">Long project</button>
       <button data-state="longplan">Long plan text</button>
+      <button data-state="taskchange">Task title change</button>
+      <button data-state="newtask">Same project · new task</button>
       <button data-state="finished">Finished plan</button>
       <button data-state="two">Two sessions</button>
       <button data-state="many">4 sessions</button>
       <button data-state="rail">Rail mix</button>
       <button data-state="update">Live plan update</button>
       <button data-state="approval">Permission</button>
+      <button data-state="longpermission">Long permission</button>
+      <button data-state="collapsedactive">Collapsed fallback</button>
+      <button data-state="collapsedplan">Collapsed plan</button>
     </nav>
     <script type="module" src="./codex-overview-preview.ts"></script>
   </body>

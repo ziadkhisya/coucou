@@ -1,6 +1,7 @@
 import "../src/style.css";
 import { Island } from "../src/island/island";
 import { State, type AgentTask } from "../src/core/state";
+import { parseUpdatePlan } from "../src/core/plan";
 
 const previewNow = Date.UTC(2026, 9, 2, 12, 0, 0);
 (globalThis as typeof globalThis & { __COUCOU_PREVIEW_NOW?: number }).__COUCOU_PREVIEW_NOW = previewNow;
@@ -51,7 +52,11 @@ const defaultPlan = [
 ];
 let updateTimer: number | undefined;
 
-function show(kind: string) {
+const previewStates = new Set(["five", "one", "usage", "low", "mixed", "stale", "unavailable", "overhour", "longtitle", "long", "longplan", "taskchange", "newtask", "finished", "two", "many", "rail", "update", "approval", "longpermission", "collapsedactive", "collapsedplan"]);
+
+function show(kind: string, writeHistory = true) {
+  if (!previewStates.has(kind)) kind = "five";
+  if (writeHistory) history.pushState({ coucouPreview: kind }, "", `?state=${encodeURIComponent(kind)}`);
   const active = kind === "two" ? [session(0), session(1)]
     : kind === "many" ? [session(0), session(1), session(2), session(3)]
     : kind === "rail" ? [session(0), session(1, longName), session(2, "Build and validation workspace", "thinking"), session(3, "Design system", "finished"), session(4, "Release validation", "working"), session(5, "Long-running docs and packaging check", "thinking")]
@@ -69,11 +74,11 @@ function show(kind: string) {
     active[0].totalPlanCount = 5;
     active[0].currentStatus = "Redesigning progress visibility";
   } else if (kind === "longplan") {
-    active[0].planSteps = [
+    active[0].planSteps = parseUpdatePlan({ steps: [
       { text: "Completed: inspect the current Windows implementation and trace the Codex session lifecycle", status: "completed" },
       { text: "Currently restructuring plan events and semantic state without leaking raw tool commands into the overview", status: "in_progress" },
       { text: "Pending: run the complete integration regression suite and validate the actual installed build", status: "pending" },
-    ];
+    ] }) ?? [];
     active[0].hasStructuredPlan = true;
     active[0].completedPlanCount = 1;
     active[0].totalPlanCount = 3;
@@ -86,18 +91,46 @@ function show(kind: string) {
   }
   active[0].taskTitle = kind === "one" ? "Fix session naming"
     : kind === "longtitle" ? "Improve semantic task titles and progress visibility across multiple Codex sessions"
+    : kind === "taskchange" ? "Fix usage synchronization"
+    : kind === "newtask" ? "Polish session rail"
     : "Improve progress visibility";
   if (kind === "one") active[0].currentStatus = "Tracing session metadata";
+  if (kind === "taskchange") active[0].currentStatus = "Comparing live rate snapshots";
+  if (kind === "newtask") {
+    active[0].name = "Coucou";
+    active[0].currentStatus = "Reviewing rail spacing";
+    active[0].taskStartedAt = previewNow - 5_000;
+  }
   if (kind === "longplan") active[0].taskTitle = "Improve plan event handling and task progress across sessions";
   if (kind === "overhour") active[0].taskStartedAt = previewNow - 4_053_000;
-  State.codexUsage = ["five", "usage", "low"].includes(kind) ? {
+  if (kind === "collapsedactive") {
+    active[0].taskTitle = "Fix usage sync";
+    active[0].currentStatus = "Running validation";
+    active[0].planSteps = [];
+    active[0].hasStructuredPlan = false;
+    active[0].taskStartedAt = previewNow - 374_000;
+  }
+  if (kind === "collapsedplan") {
+    active[0].taskTitle = "Fix usage sync";
+    active[0].planSteps = defaultPlan.map((step) => ({ ...step }));
+    active[0].hasStructuredPlan = true;
+    active[0].completedPlanCount = 2;
+    active[0].totalPlanCount = 5;
+    active[0].taskStartedAt = previewNow - 1_122_000;
+  }
+  const baseUsage = {
     available: true,
-    fetchedAt: previewNow,
+    fetchedAt: kind === "stale" ? previewNow - 240_000 : previewNow,
     planType: "plus",
     limitId: "codex",
-    primary: { usedPercent: kind === "low" ? 96 : 27, remainingPercent: kind === "low" ? 4 : 73, windowDurationMins: 300, resetsAt: 1790958335 },
-    secondary: { usedPercent: kind === "low" ? 98 : 39, remainingPercent: kind === "low" ? 2 : 61, windowDurationMins: 10080, resetsAt: 1791050065 },
-  } : kind === "unavailable" ? { available: false, fetchedAt: previewNow, error: "unavailable" } : null;
+    source: "snapshot" as const,
+    lastFullReadAt: previewNow,
+    lastRollingUpdateAt: null,
+    fiveHour: { usedPercent: kind === "low" ? 96 : 28, remainingPercent: kind === "low" ? 4 : kind === "mixed" ? 72 : 72, windowDurationMins: 300, resetsAt: 1790958335, limitId: "codex", source: "snapshot" as const, receivedAt: previewNow, emittedAt: null, requestStartedAt: previewNow - 100 },
+    weekly: { usedPercent: kind === "low" ? 98 : kind === "mixed" ? 95 : 39, remainingPercent: kind === "low" ? 2 : kind === "mixed" ? 5 : 61, windowDurationMins: 10080, resetsAt: 1791050065, limitId: "codex", source: "snapshot" as const, receivedAt: previewNow, emittedAt: null, requestStartedAt: previewNow - 100 },
+    ...(kind === "stale" ? { error: "stale", lastErrorAt: previewNow } : {}),
+  };
+  State.codexUsage = kind === "unavailable" ? { available: false, source: "unavailable", fetchedAt: previewNow, lastFullReadAt: null, lastRollingUpdateAt: null, lastErrorAt: previewNow, error: "unavailable" } : baseUsage;
 
   active.forEach((task, index) => {
     task.id = `${task.id}-${kind}`;
@@ -106,18 +139,24 @@ function show(kind: string) {
   if (kind === "long") active[0].name = longName;
   State.tasks = active;
   State.focusId = active[0].id;
-  State.pendingApproval = kind === "approval" ? {
+  State.pendingApproval = kind === "approval" || kind === "longpermission" ? {
     requestId: "preview-approval",
     sessionId: active[0].sessionId!,
     turnId: "preview-turn",
     taskId: active[0].id,
     provider: "codex",
     tool: "PowerShell",
-    command: "Remove-Item -WhatIf .\\build\\old-output.tmp",
+    command: kind === "longpermission"
+      ? `Remove-Item -LiteralPath 'C:\\Users\\lakhs\\Documents\\Codex\\${"long-workspace-".repeat(24)}build\\old-output.tmp' -WhatIf`
+      : "Remove-Item -WhatIf .\\build\\old-output.tmp",
   } : null;
   State.notify();
-  const viewName = kind === "approval" ? "approval" : "overview";
+  const collapsed = kind === "collapsedactive" || kind === "collapsedplan";
+  document.body.classList.toggle("preview-collapsed", collapsed);
+  const viewName = kind === "approval" || kind === "longpermission" ? "approval" : "overview";
   island.alert(viewName);
+  State.mode = collapsed ? "compact" : "expanded";
+  State.notify();
   document.getElementById("content")!.style.opacity = "1";
   document.querySelectorAll<HTMLElement>(".view").forEach((view) => {
     view.classList.toggle("on", view.classList.contains(viewName));
@@ -145,6 +184,10 @@ function show(kind: string) {
   document.querySelectorAll<HTMLButtonElement>("#preview-controls button").forEach((button) => {
     button.classList.toggle("selected", button.dataset.state === kind);
   });
+  if (collapsed) {
+    State.mode = "compact";
+    State.notify();
+  }
   if (updateTimer != null) window.clearTimeout(updateTimer);
   updateTimer = kind === "update" ? window.setTimeout(advancePlanPreview, 1800) : undefined;
 }
@@ -153,8 +196,9 @@ document.querySelectorAll<HTMLButtonElement>("#preview-controls button").forEach
   button.addEventListener("click", () => show(button.dataset.state ?? "one"));
 });
 
+window.addEventListener("popstate", () => show(new URLSearchParams(location.search).get("state") ?? "five", false));
 const initialState = new URLSearchParams(location.search).get("state") ?? "five";
-show(initialState);
+show(initialState, false);
 
 function advancePlanPreview() {
   window.setTimeout(() => {

@@ -236,6 +236,12 @@ function stepLabel(tool: string, input: Record<string, unknown>): string {
   return label;
 }
 
+function eventTime(value: unknown): number {
+  const parsed = typeof value === "number" ? (value > 10_000_000_000 ? value : value * 1000)
+    : typeof value === "string" ? Date.parse(value) : NaN;
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
 function semanticToolStatus(tool: string, input: Record<string, unknown>): string {
   const name = tool.toLowerCase();
   const command = typeof input.command === "string" ? input.command.toLowerCase() : "";
@@ -416,10 +422,7 @@ function handleHook(island: Island, payload: HookPayload) {
       // A new turn supersedes any unanswered request from the same session.
       cancelApprovalForSession(island, provider, sessionId);
       if (provider === "codex") {
-        const rawTime = payload.timestamp;
-        const parsedTime = typeof rawTime === "number" ? (rawTime > 10_000_000_000 ? rawTime : rawTime * 1000)
-          : typeof rawTime === "string" ? Date.parse(rawTime) : NaN;
-        State.resetTask(taskId, Number.isFinite(parsedTime) ? parsedTime : Date.now());
+        State.resetTask(taskId, eventTime(payload.timestamp));
       }
       State.updateTask(taskId, "thinking");
       State.setPillBadge(taskId, null);
@@ -454,7 +457,7 @@ function handleHook(island: Island, payload: HookPayload) {
       const failed = ["failed", "tool_result_failed", "error"].includes((payload.tool_status ?? "").toLowerCase()) ||
         Boolean(payload.tool_error) || (typeof payload.tool_exit_code === "number" && payload.tool_exit_code !== 0);
       if (failed) {
-        State.updateTask(taskId, "error");
+        State.updateTask(taskId, "error", eventTime(payload.timestamp));
         if (provider === "codex") State.setSemanticStatus(taskId, "A step needs attention");
         const detail = payload.tool_error ?? `tool ${payload.tool_status ?? "failed"}${payload.tool_exit_code != null ? ` (exit ${payload.tool_exit_code})` : ""}`;
         State.appendStep(taskId, `⚠ ${detail}`.slice(0, 140));
@@ -468,7 +471,7 @@ function handleHook(island: Island, payload: HookPayload) {
 
     case "PostToolUseFailure":
     case "tool_result_failed":
-      State.updateTask(taskId, "error");
+      State.updateTask(taskId, "error", eventTime(payload.timestamp));
       if (provider === "codex") State.setSemanticStatus(taskId, "A step needs attention");
       State.appendStep(taskId, `⚠ ${payload.error ?? String(payload.tool_result?.error ?? "tool failed")}`.slice(0, 140));
       State.setPillBadge(taskId, "error");
@@ -492,7 +495,7 @@ function handleHook(island: Island, payload: HookPayload) {
 
     case "Stop": {
       cancelApprovalForEvent(island, provider, sessionId, payload.turn_id);
-      State.updateTask(taskId, "finished");
+      State.updateTask(taskId, "finished", eventTime(payload.timestamp));
       const message = payload.last_assistant_message ?? payload.message;
       if (provider === "codex") State.setSemanticStatus(taskId, conciseCompletion(message));
       else if (message) State.appendStep(taskId, message.slice(0, 120));
@@ -517,7 +520,7 @@ function handleHook(island: Island, payload: HookPayload) {
     case "Interrupt":
     case "Interrupted":
       cancelApprovalForEvent(island, provider, sessionId, payload.turn_id);
-      State.updateTask(taskId, "interrupted");
+      State.updateTask(taskId, "interrupted", eventTime(payload.timestamp));
       if (provider === "codex") State.setSemanticStatus(taskId, "Work stopped");
       State.appendStep(taskId, "Interrupted");
       State.setPillBadge(taskId, "interrupted");
@@ -527,7 +530,7 @@ function handleHook(island: Island, payload: HookPayload) {
 
     case "StopFailure":
       cancelApprovalForEvent(island, provider, sessionId, payload.turn_id);
-      State.updateTask(taskId, "error");
+      State.updateTask(taskId, "error", eventTime(payload.timestamp));
       if (provider === "codex") State.setSemanticStatus(taskId, "Task stopped with an error");
       else if (payload.error) State.appendStep(taskId, payload.error.slice(0, 120));
       Sound.play("error");

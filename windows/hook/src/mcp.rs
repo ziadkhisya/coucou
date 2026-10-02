@@ -59,7 +59,7 @@ fn update_plan_tool() -> Value {
     json!({
         "name": "update_plan",
         "title": "Update Coucou task progress",
-        "description": "Publish semantic progress to Coucou. Set task_title to a concise 3-7 word description of the user's current objective and current_status to what you are doing now. Update the title only when the objective materially changes; update status when the work phase changes. For meaningful multi-step work, include 3-7 outcome-oriented steps, usually under 60 characters each, and update their statuses. For trivial work, send task_title/current_status without steps. Never use commands, tool names, paths, or prompt/folder slugs as labels.",
+        "description": "Publish semantic progress to Coucou. At the start of meaningful work, set task_title to a concise 3-7 word description of the user's current objective and current_status to the present work phase. If the user gives a materially new objective later in the same session, publish the new task_title while keeping the project identity unchanged; do not rename for every implementation detail. Update current_status only when the work phase changes. For meaningful multi-step work, include 3-7 outcome-oriented steps, usually 3-7 words and under 60 characters, and update their statuses. For trivial work, send task_title/current_status without steps. Never use commands, tool names, paths, prompt text, or transient folder/session slugs as labels.",
         "inputSchema": {
             "type": "object",
             "properties": {

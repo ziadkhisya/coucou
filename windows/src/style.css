@@ -183,7 +183,7 @@ body {
 
 .compact-project {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 46%;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -196,10 +196,17 @@ body {
 
 .compact-status {
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   overflow: hidden;
   color: #a9c3b4;
   text-overflow: ellipsis;
+}
+
+.compact-timer {
+  flex: 0 0 auto;
+  color: #aeb3b8;
+  font: 550 9px/1 var(--font);
+  font-variant-numeric: tabular-nums;
 }
 
 /* A mini Mochi: the slot is the body, the canvas is larger and overflows it so
@@ -440,13 +447,13 @@ body {
 }
 
 .overview > .right {
-  flex: 0 0 176px;
+  flex: 0 0 192px;
   min-width: 0;
   align-self: flex-start;
 }
 
 .overview.single-other-session > .right {
-  flex-basis: 156px;
+  flex-basis: 172px;
 }
 
 .overview > .right > .card {
@@ -558,14 +565,30 @@ body {
 }
 .usage-summary {
   flex: 0 0 auto;
-  max-width: 48%;
+  max-width: 52%;
   overflow: hidden;
-  color: #8fbc9f;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  color: #aab6ad;
   font: 450 9px/1.2 var(--font);
   white-space: nowrap;
   text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
 }
+
+.usage-window { flex: 0 0 auto; }
+.usage-window.usage-healthy { color: #8fbc9f; }
+.usage-window.usage-warning { color: #d6ad68; }
+.usage-window.usage-critical { color: #df8587; }
+.usage-window.usage-unavailable,
+.usage-window.usage-stale,
+.usage-freshness { color: #70767e; }
+.usage-freshness { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.usage-freshness.unavailable { color: #7c8289; }
+.usage-freshness.stale { color: #a08c68; }
+.usage-divider { color: #626970; }
 
 .session-name[title] { cursor: default; }
 
@@ -766,9 +789,13 @@ body {
 }
 
 .session-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 2px;
 }
+
+.session-list:hover::-webkit-scrollbar-thumb,
+.session-list:focus-within::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.24); }
+.session-list { scrollbar-color: rgba(255, 255, 255, 0.08) transparent; }
 
 .session-pill {
   position: relative;
@@ -799,6 +826,13 @@ body {
   min-width: 0;
 }
 
+.session-pill-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .session-pill-name,
 .session-pill-state {
   white-space: nowrap;
@@ -807,8 +841,17 @@ body {
 }
 
 .session-pill-name {
+  flex: 1 1 auto;
+  min-width: 0;
   color: #c8ccd1;
   font: 550 9.5px/1.1 var(--font);
+}
+
+.session-pill-timer {
+  flex: 0 0 auto;
+  color: #969da4;
+  font: 500 8px/1 var(--font);
+  font-variant-numeric: tabular-nums;
 }
 
 .session-pill-state {

@@ -48,6 +48,7 @@ export class Island {
   private compactProgress!: HTMLElement;
   private compactProject!: HTMLElement;
   private compactStatus!: HTMLElement;
+  private compactTimer!: HTMLElement;
   private countdown!: HTMLElement;
   private wakeStrip!: HTMLElement;
 
@@ -187,10 +188,13 @@ export class Island {
     this.miniGrid = h("div", { id: "mini-grid" });
     this.compactProject = h("span", { class: "compact-project" });
     this.compactStatus = h("span", { class: "compact-status" });
+    this.compactTimer = h("span", { class: "compact-timer" });
     this.compactProgress = h("div", { id: "compact-progress", "aria-live": "polite" },
       this.compactProject,
       h("span", { class: "compact-separator", text: "·" }),
       this.compactStatus,
+      h("span", { class: "compact-separator compact-timer-separator", text: "·" }),
+      this.compactTimer,
     );
     this.countdown = h("div", { id: "countdown" });
 
@@ -898,10 +902,11 @@ export class Island {
         ? `${focused.completedPlanCount}/${focused.totalPlanCount}`
         : focused.state === "finished" ? "Finished" : focused.currentStatus || "Reviewing project files";
       const compactTitle = focused.taskTitle || focused.name;
-      const compactDetail = [progress, elapsed].filter(Boolean).join(" · ");
-      const label = `${focused.name} · ${focused.taskTitle} · ${compactDetail}`;
+      const compactDetail = progress;
+      const label = `${focused.name} · ${focused.taskTitle} · ${compactDetail} · ${elapsed}`;
       if (this.compactProject.textContent !== compactTitle) this.compactProject.textContent = compactTitle;
       if (this.compactStatus.textContent !== compactDetail) this.compactStatus.textContent = compactDetail;
+      if (this.compactTimer.textContent !== elapsed) this.compactTimer.textContent = elapsed;
       this.compactProgress.title = label;
     }
     if (showGrid && !showProgress) {

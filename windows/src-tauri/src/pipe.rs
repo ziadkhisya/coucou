@@ -180,6 +180,13 @@ async fn handle(app: AppHandle, mut pipe: NamedPipeServer) {
         .unwrap_or_default()
         .to_string();
 
+    if event == "SessionStart" || event == "UserPromptSubmit" {
+        let has_native_project = payload.get("project_name").and_then(Value::as_str).is_some_and(|value| !value.trim().is_empty());
+        let has_git_root = payload.get("git_root_name").and_then(Value::as_str).is_some_and(|value| !value.trim().is_empty());
+        let has_git_remote = payload.get("git_remote").and_then(Value::as_str).is_some_and(|value| !value.trim().is_empty());
+        crate::log::line(format!("Codex project identity sources: native={has_native_project} git_root={has_git_root} git_remote={has_git_remote}"));
+    }
+
     if event != "PermissionRequest" {
         log::line(format!("hook {event}"));
         let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
@@ -266,9 +273,8 @@ fn enrich_project_identity(payload: &mut Value) {
         }
     }
     let Some((root, remote)) = found else { return };
-    if payload.get("project_name").and_then(Value::as_str).is_none_or(str::is_empty) {
-        payload["project_name"] = json!(root);
-    }
+    // Keep native Codex project metadata distinct from filesystem identity.
+    // The frontend chooses project_name first, then this git-root/remote fallback.
     payload["git_root_name"] = json!(root);
     if let Some(remote) = remote { payload["git_remote"] = json!(remote); }
 }
