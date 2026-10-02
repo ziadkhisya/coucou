@@ -38,6 +38,9 @@ test("metadata-only progress parses without requiring a checklist", () => {
   assert.deepEqual(progress.parseProgressUpdate({ task_title: "Build app", steps: [{ text: "Inspect files", status: "completed" }] }), {
     taskTitle: "Build app", steps: [{ text: "Inspect files", status: "completed" }],
   });
+  assert.deepEqual(progress.parseProgressUpdate({ plan: [{ step: "Inspect files", status: "inProgress" }] }), {
+    steps: [{ text: "Inspect files", status: "in_progress" }],
+  });
 });
 
 test("task clock resets on new task, freezes at finish, and formats both ranges", () => {

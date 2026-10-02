@@ -19,7 +19,7 @@ export function parseProgressUpdate(input: unknown): ProgressUpdate | null {
   const value = input as Record<string, unknown>;
   const title = cleanText(value.task_title ?? value.taskTitle, 96);
   const status = cleanText(value.current_status ?? value.currentStatus ?? value.message, 120);
-  const steps = parseUpdatePlan({ steps: value.steps });
+  const steps = parseUpdatePlan(Array.isArray(value.steps) ? { steps: value.steps } : value);
   if (!title && !status && !steps) return null;
   return { ...(title ? { taskTitle: title } : {}), ...(status ? { currentStatus: status } : {}), ...(steps ? { steps } : {}) };
 }
