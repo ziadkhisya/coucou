@@ -123,6 +123,24 @@ test("update_plan parser normalizes step status and rejects malformed data", () 
   assert.equal(parseUpdatePlan(null), null);
 });
 
+test("update_plan parser accepts the installed app-server plan notification shape", () => {
+  // Codex CLI 0.159.2's generated protocol schema defines this notification
+  // as { threadId, turnId, plan: [{ step, status }] }.
+  assert.deepEqual(parseUpdatePlan({
+    threadId: "thread-a",
+    turnId: "turn-a",
+    plan: [
+      { step: "Inspect the implementation", status: "completed" },
+      { step: "Update the event handler", status: "inProgress" },
+      { step: "Validate the result", status: "pending" },
+    ],
+  }), [
+    { text: "Inspect the implementation", status: "completed" },
+    { text: "Update the event handler", status: "in_progress" },
+    { text: "Validate the result", status: "pending" },
+  ]);
+});
+
 test("Codex plans are session-scoped, renderable progress and survive Stop unchanged", () => {
   const plan = { steps: [
     { text: "Inspect implementation", status: "completed" },
@@ -133,12 +151,15 @@ test("Codex plans are session-scoped, renderable progress and survive Stop uncha
   dispatchHook({ provider: "codex", hook_event_name: "SessionStart", session_id: "plan-a", cwd: "C:/work/alpha" });
   dispatchHook({ provider: "codex", hook_event_name: "PreToolUse", session_id: "plan-a", turn_id: "turn-a", cwd: "C:/work/alpha", tool_name: "update_plan", tool_input: plan });
   dispatchHook({ provider: "codex", hook_event_name: "SessionStart", session_id: "plan-b", cwd: "C:/work/beta" });
+  dispatchHook({ provider: "codex", hook_event_name: "PreToolUse", session_id: "plan-b", turn_id: "turn-b", cwd: "C:/work/beta", tool_name: "mcp__coucou_progress__update_plan", tool_input: { steps: plan.steps } });
 
   const first = sessionTask("codex", "plan-a");
   const second = sessionTask("codex", "plan-b");
   assert.equal(first.completedPlanCount, 1);
   assert.equal(first.totalPlanCount, 4);
-  assert.equal(second.hasStructuredPlan, false);
+  assert.deepEqual(second.planSteps, plan.steps);
+  assert.equal(second.completedPlanCount, 1);
+  assert.equal(second.hasStructuredPlan, true);
   assert.equal(first.semanticStatus, "Modify event handling");
 
   dispatchHook({ provider: "codex", hook_event_name: "Stop", session_id: "plan-a", turn_id: "turn-a", last_assistant_message: "Completed validation." });

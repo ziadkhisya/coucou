@@ -5,9 +5,10 @@ const MAX_TEXT = 240;
 
 /**
  * Adapt the update_plan input carried by a Codex PreToolUse hook into Coucou's
- * session plan. Codex CLI 0.159.2 on the development machine did not expose
- * update_plan, so this accepts the common `plan`/`steps` envelope variants
- * while rejecting ambiguous or malformed events without throwing.
+ * session plan. Codex CLI 0.159.2 ships an app-server
+ * TurnPlanUpdatedNotification shape (`plan: [{ step, status }]`), though
+ * probe sessions here did not emit one. Also accept common hook-input
+ * envelopes, while rejecting malformed events without throwing.
  */
 export function parseUpdatePlan(input: unknown): PlanStep[] | null {
   try {

@@ -105,6 +105,7 @@ impl Provider {
 }
 
 mod win;
+mod mcp;
 
 /// `\\.\pipe\coucou-<sid>`. The SID keeps two accounts on the same machine from
 /// ever meeting on the same pipe; the name falls back to the user name only if
@@ -144,6 +145,11 @@ fn connect_at(path: &str) -> Option<std::fs::File> {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--mcp-stdio") {
+        mcp::serve(std::io::stdin().lock(), std::io::stdout().lock());
+        return;
+    }
+
     let Some((provider, expected_event)) = provider_event_from_args() else {
         std::process::exit(0)
     };

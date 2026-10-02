@@ -354,6 +354,11 @@ export function registerHookHandlers(island: Island) {
   void onEvent<HookPayload>("hook", (payload) => handleHook(island, payload));
 }
 
+function isUpdatePlanToolName(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return normalized === "update_plan" || normalized.endsWith("__update_plan");
+}
+
 function handleHook(island: Island, payload: HookPayload) {
   const provider: CodeProvider = payload.provider === "codex" ? "codex" : "claude";
   const name = payload.hook_event_name ?? "";
@@ -435,7 +440,7 @@ function handleHook(island: Island, payload: HookPayload) {
       State.updateTask(taskId, "working");
       const tool = payload.tool_name ?? "Tool";
       if (provider === "codex") {
-        if (tool.toLowerCase() === "update_plan") {
+        if (isUpdatePlanToolName(tool)) {
           const plan = parseUpdatePlan(payload.tool_input);
           if (plan) State.setPlan(taskId, plan);
         } else if (!task?.hasStructuredPlan) {
