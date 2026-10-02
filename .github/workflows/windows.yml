@@ -57,7 +57,13 @@ jobs:
         run: |
           npm test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo test --workspace --locked
+          cargo test --workspace --locked *>&1 | Tee-Object -FilePath "$env:RUNNER_TEMP/coucou-cargo-test.log"
+          $cargoExit = $LASTEXITCODE
+          if ($cargoExit -ne 0) {
+            "## Cargo test diagnostics" >> $env:GITHUB_STEP_SUMMARY
+            Get-Content "$env:RUNNER_TEMP/coucou-cargo-test.log" -Tail 100 >> $env:GITHUB_STEP_SUMMARY
+            exit $cargoExit
+          }
 
       # Three files carry the version and they drift silently. Publishing a
       # "0.1.1" that installs a 0.1.0 is the kind of thing nobody notices until
