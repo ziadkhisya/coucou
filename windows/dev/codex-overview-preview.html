@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Coucou Codex overview preview</title>
+    <style>
+      #preview-backdrop { position: fixed; inset: 0; background: #090a0c; }
+      #preview-controls { position: fixed; z-index: 20; top: 192px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 5px; padding: 7px; border: 1px solid rgba(255,255,255,.09); border-radius: 12px; background: #151619; white-space: nowrap; }
+      #preview-controls > span { padding: 0 5px; color: #6b7079; font: 600 8px system-ui,sans-serif; letter-spacing: .08em; }
+      #preview-controls button { border: 0; border-radius: 7px; padding: 5px 7px; background: transparent; color: #a6abb2; font: 500 9px system-ui,sans-serif; cursor: pointer; }
+      #preview-controls button:hover, #preview-controls button.selected { background: #282b30; color: #f5f6f8; }
+    </style>
+  </head>
+  <body>
+    <div id="preview-backdrop"></div>
+    <div id="root"></div>
+    <nav id="preview-controls" aria-label="Preview states">
+      <span>PREVIEW</span>
+      <button data-state="one">One session</button>
+      <button data-state="long">Long name</button>
+      <button data-state="tool">Tool running</button>
+      <button data-state="finished">Finished</button>
+      <button data-state="two">Two sessions</button>
+      <button data-state="many">Four sessions</button>
+      <button data-state="approval">Permission</button>
+    </nav>
+    <script type="module" src="./codex-overview-preview.ts"></script>
+  </body>
+</html>
+

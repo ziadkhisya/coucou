@@ -116,6 +116,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoCloseInterval: 15,
   absenceInterval: 180,
   activeIntegrations: [],
+
   screen: "primary",
   autostart: false,
   hooksInstalled: false,
@@ -185,11 +186,9 @@ class AppState {
   }
 
   get otherTasks(): AgentTask[] {
-    // Keep Codex and live sessions visible without optional service integrations.
-    const others = this.tasks.filter((t) => t.id !== this.focusId &&
-      (!t.isIntegration || t.id === "integration_codex"));
-    const sessions = others.filter((t) => !t.isIntegration);
-    const integrations = others.filter((t) => t.isIntegration);
+    // The overview rail is reserved for real coding sessions. Provider setup
+    // cards stay in the focused slot and never masquerade as a second session.
+    const sessions = this.tasks.filter((t) => t.id !== this.focusId && !t.isIntegration);
     const priority = (state: BotStateName): number => {
       switch (state) {
         case "approval": return 0;
@@ -205,7 +204,7 @@ class AppState {
       }
     };
     sessions.sort((a, b) => priority(a.state) - priority(b.state) || b.activityOrder - a.activityOrder);
-    return [...sessions, ...integrations];
+    return sessions;
   }
 
   private touchTask(task: AgentTask) {
@@ -357,3 +356,4 @@ export function codeSessionTaskId(provider: CodeProvider, sessionId: string): st
 }
 
 export const State = new AppState();
+

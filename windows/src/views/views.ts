@@ -124,8 +124,12 @@ export function buildHeader(actions: ViewActions): ViewHost {
 
 function buildOverview(actions: ViewActions): ViewHost {
   const ticker = new Ticker();
-  const who = h("div", { class: "who" });
-  const tickerBody = h("div", { class: "card-body" }, who, ticker.el);
+  const projectName = h("div", { class: "session-name" });
+  const who = h("div", { class: "session-provider" });
+  const sessionState = h("span", { class: "session-state" });
+  const activityCount = h("span", { class: "session-count" });
+  const meta = h("div", { class: "session-meta" }, who, h("span", { class: "meta-separator", text: "·" }), sessionState, activityCount);
+  const tickerBody = h("div", { class: "card-body" }, projectName, meta, ticker.el);
   const leftBody = h("div", { class: "left-body" });
   const jump = h(
     "button",
@@ -133,8 +137,9 @@ function buildOverview(actions: ViewActions): ViewHost {
     svg(ICONS.arrowUpRight, 8),
   );
   const left = card(null, leftBody, jump);
-  const pills = h("div", { class: "pills", tabindex: 0, "aria-label": "Sessions and integrations" });
-  const right = card(null, pills);
+  const pills = h("div", { class: "session-list", tabindex: 0, "aria-label": "Other active Codex sessions" });
+  const railTitle = h("div", { class: "session-rail-title", text: "OTHER SESSIONS" });
+  const right = card(null, h("div", { class: "session-rail" }, railTitle, pills));
   const rightColumn = h("div", { class: "right" }, right);
 
   const el = h("div", { class: "view overview" },
@@ -180,11 +185,10 @@ function buildOverview(actions: ViewActions): ViewHost {
         mode = null;
       }
 
-      // Live Claude Code and Codex sessions get their own ticker. Permanent
-      // provider cards show installation state until a session is active.
+      // Live Claude Code and Codex sessions get their own ticker. Provider
+      // setup cards remain available when no session is focused.
       const isCodeSession = task?.source === "claudeCode" || task?.source === "codex";
-      const sessionActive = Boolean(task && isCodeSession &&
-        (!task.isIntegration || task.state !== "idle" || task.steps.length > 0));
+      const sessionActive = Boolean(task && isCodeSession && !task.isIntegration);
 
       if (task && sessionActive) {
         if (mode !== "ticker") {
@@ -193,18 +197,24 @@ function buildOverview(actions: ViewActions): ViewHost {
           mode = "ticker";
           cardKey = "";
         }
+        tickerBody.classList.toggle("session-done", task.state === "finished" || task.state === "interrupted");
+        clear(projectName);
+        projectName.append(dot(task.color, 7), h("span", { class: "session-name-text", text: task.name }));
         clear(who);
-        who.append(
-          dot(task.color, 7),
-          h("span", { class: "name", text: task.name }),
-          h("span", { class: "tool", text: providerLabel(task) }),
-        );
-        if (task.steps.length > 1) {
-          who.append(h("span", {
-            class: "count",
-            text: `${Math.min(task.stepIndex + 1, task.steps.length)}/${task.steps.length}`,
-          }));
-        }
+        who.append(h("span", { class: "provider-name", text: providerLabel(task) }));
+        sessionState.textContent = task.state === "approval" ? "Needs approval"
+          : task.state === "working" ? "Working"
+          : task.state === "thinking" ? "Thinking"
+          : task.state === "searching" ? "Searching"
+          : task.state === "finished" ? "Finished"
+          : task.state === "interrupted" ? "Stopped"
+          : task.state === "error" ? "Error"
+          : task.state === "question" ? "Needs input"
+          : task.state === "ratelimit" ? "Rate limited"
+          : "Connected";
+        sessionState.className = `session-state ${task.state}`;
+        const actionCount = Math.max(task.stepRevision, task.steps.length);
+        activityCount.textContent = actionCount > 0 ? `${actionCount} actions` : "";
         ticker.sync(task);
       } else if (task) {
         const info = State.integrations[task.id];
@@ -224,10 +234,10 @@ function buildOverview(actions: ViewActions): ViewHost {
       jump.style.display = detailOpen ? "none" : "";
 
       const others = State.otherTasks;
-      el.classList.toggle("single-session", others.length === 0);
+      el.classList.toggle("has-sessions", others.length > 0);
       rightColumn.style.display = others.length === 0 ? "none" : "";
       const nextOrder = others.map((t) => t.id).join("|");
-      const pillKey = others.map((t) => `${t.id}:${t.pillBadge ?? ""}`).join("|");
+      const pillKey = others.map((t) => `${t.id}:${t.name}:${t.state}:${t.pillBadge ?? ""}`).join("|");
       if (pillKey !== pillIds) {
         pillIds = pillKey;
         clear(pills);
@@ -241,27 +251,19 @@ function buildOverview(actions: ViewActions): ViewHost {
 }
 
 function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {
-  const label = task.id === "integration_claude" ? "VS Code" : task.name;
-  const canvas = createMiniBot(task, 24);
+  const canvas = createMiniBot(task, 20);
   const pill = h(
-    "div",
-    { class: "pill", onclick: () => actions.setFocus(task.id) },
+    "button",
+    { class: "session-pill", type: "button", title: task.name, onclick: () => actions.setFocus(task.id) },
     canvas,
-    h("span", { class: "lbl", text: label }),
+    h("span", { class: "session-pill-copy" },
+      h("span", { class: "session-pill-name", text: task.name }),
+      h("span", { class: "session-pill-state", text: `${providerLabel(task)} · ${task.state === "working" ? "Working" : task.state === "thinking" ? "Thinking" : task.state === "approval" ? "Approval" : task.state === "finished" ? "Finished" : task.state === "error" ? "Error" : "Active"}` }),
+    ),
   );
+  pill.setAttribute("aria-label", `Focus ${task.name}, ${task.state}`);
+  pill.style.setProperty("--session-color", task.color);
   pill.style.borderColor = `${task.color}24`;
-  pill.addEventListener("mouseenter", () => {
-    pill.style.background = `${task.color}2e`;
-    pill.style.borderColor = `${task.color}8c`;
-    pill.style.boxShadow = `0 2px 10px ${task.color}59`;
-    (pill.querySelector(".lbl") as HTMLElement).style.color = lighten(task.color, 0.3);
-  });
-  pill.addEventListener("mouseleave", () => {
-    pill.style.background = "";
-    pill.style.borderColor = `${task.color}24`;
-    pill.style.boxShadow = "";
-    (pill.querySelector(".lbl") as HTMLElement).style.color = "";
-  });
 
   if (task.pillBadge) {
     const colors = { approval: "#F5A524", finished: "#22C55E", interrupted: "#F0A64A", error: "#F4505E" } as const;
@@ -272,14 +274,6 @@ function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {
     pill.append(badge);
   }
   return pill;
-}
-
-function lighten(hex: string, amount: number): string {
-  const v = parseInt(hex.replace("#", ""), 16);
-  const c = [(v >> 16) & 255, (v >> 8) & 255, v & 255].map((x) =>
-    Math.min(255, Math.round(x + amount * 255)),
-  );
-  return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
 
 // ── Empty ─────────────────────────────────────────────────────────────────────
@@ -541,3 +535,4 @@ export function buildViews(
   map.set("result", buildPlaceholder("Result", ""));
   return map;
 }
+
