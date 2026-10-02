@@ -105,11 +105,19 @@ async fn run_session(app: &AppHandle, mut demand: watch::Receiver<UsageDemand>) 
     send(&mut input, json!({"jsonrpc":"2.0","method":"notifications/initialized","params":{}})).await?;
 
     let mut requests: HashMap<u64, u64> = HashMap::new();
-    let mut request_id = 1_u64;
-    let mut next_poll = Instant::now(); // full snapshot immediately after initialization
+    let mut request_id = 2_u64;
+    let current_demand = *demand.borrow();
+    let mut next_poll = Instant::now() + poll_interval(current_demand, None);
     let mut last_notification: Option<Instant> = None;
     let mut last_refresh_sequence = demand.borrow().refresh_sequence;
     let mut last_logged = (None, None);
+
+    // Take the initial snapshot before waiting on the demand channel. The UI
+    // reports its initial hidden/idle state as soon as it boots; handling that
+    // message first must not accidentally defer the required startup read.
+    let request_started_at = now_ms();
+    send(&mut input, rate_limit_request(request_id)).await?;
+    requests.insert(request_id, request_started_at);
 
     loop {
         let timer = sleep_until(next_poll);
