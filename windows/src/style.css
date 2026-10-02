@@ -173,14 +173,33 @@ body {
   height: 32px;
   display: flex;
   align-items: center;
-  overflow: hidden;
   color: #d6dad7;
   font: 550 11px/1.2 var(--font);
   white-space: nowrap;
-  text-overflow: ellipsis;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.2s ease;
+}
+
+.compact-project {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.compact-separator {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  color: #68716c;
+}
+
+.compact-status {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: #a9c3b4;
+  text-overflow: ellipsis;
 }
 
 /* A mini Mochi: the slot is the body, the canvas is larger and overflows it so
