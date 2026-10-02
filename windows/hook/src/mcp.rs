@@ -115,7 +115,7 @@ fn call_tool(params: &Value) -> Value {
         }));
 
     let text = if valid {
-        "Plan update accepted; Coucou receives the progress through its Codex hook." 
+        "Plan update accepted; Coucou receives the progress through its Codex hook."
     } else {
         "Plan update was not published because its steps were malformed; continue the task normally."
     };
