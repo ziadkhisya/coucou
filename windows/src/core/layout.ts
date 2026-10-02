@@ -89,6 +89,18 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   greeting: { height: 150, botX: 320, botY: 90, botDiameter: 0, agentMode: "none" },
 };
 
+/** Overview grows only enough to show its checklist and the other-session rail. */
+export function overviewHeight(planRows: number, finishedPendingRows: number, otherSessions: number): number {
+  const visiblePlanRows = Math.min(6, Math.max(0, planRows));
+  const checklistRows = visiblePlanRows > 0 ? visiblePlanRows : 1;
+  const completionNote = finishedPendingRows > 0 ? 15 : 0;
+  // Header, card padding and title/meta take 114px; each checklist row is 18px.
+  const mainHeight = Math.max(148, 114 + checklistRows * 18 + completionNote);
+  // The rail uses 38px session items with a 4px gap; cap it and let its list scroll.
+  const railHeight = otherSessions > 0 ? 78 + Math.min(otherSessions, 4) * 42 : 0;
+  return Math.min(264, Math.max(mainHeight, railHeight));
+}
+
 // The upload views above are only the fallback geometry. Once a file is actually
 // dropped the whole sequence — Mochi included — is drawn by src/upload, which
 // owns its own constants (USC) straight from UploadSequenceEngine.swift.
@@ -102,6 +114,7 @@ export function islandSize(
   mode: IslandMode,
   view: IslandViewName,
   chatCount = 0,
+  overviewHeightPx = VIEW_LAYOUTS.overview.height,
 ): { w: number; h: number } {
   switch (mode) {
     case "hidden":
@@ -111,7 +124,8 @@ export function islandSize(
     case "compact":
       return { w: COMPACT_W, h: NOTCH_H };
     case "expanded": {
-      const h = view === "prompt" ? chatPromptHeight(chatCount) : VIEW_LAYOUTS[view].height;
+      const h = view === "prompt" ? chatPromptHeight(chatCount)
+        : view === "overview" ? overviewHeightPx : VIEW_LAYOUTS[view].height;
       return { w: EXPANDED_W, h };
     }
   }

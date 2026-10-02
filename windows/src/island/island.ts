@@ -5,7 +5,7 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, onDragDrop } from "../core/bridge";
 import {
   EXPANDED_CORNER, EXPANDED_W, NOTCH_W, PANEL_H, PANEL_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatPromptHeight,
+  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatPromptHeight, overviewHeight,
   islandSize,
   type IslandMode, type IslandViewName,
 } from "../core/layout";
@@ -86,6 +86,7 @@ export class Island {
   private confusedRecovery: number | null = null;
   private prevViewBeforeConfused: IslandViewName = "overview";
   private lastSyncedView: IslandViewName | null = null;
+  private overviewHeightTarget = -1;
 
   /** Drop sequence bookkeeping: last tick played, and whether the ✓ has fired. */
   private uploadTens = 0;
@@ -100,6 +101,10 @@ export class Island {
     this.greeting.onComplete = () => this.fsm.greetComplete();
     State.subscribe(() => {
       this.dirty = true;
+      if (State.mode === "expanded" && State.view === "overview") {
+        const target = this.currentOverviewHeight();
+        if (target !== this.overviewHeightTarget) this.animateGeometry(target < this.height.value);
+      }
       this.ensureRunning();
     });
   }
@@ -467,13 +472,23 @@ export class Island {
   // ── Geometry ────────────────────────────────────────────────────────────────
 
   private targetSize(): { w: number; h: number; r: number } {
-    const { w, h } = islandSize(State.mode, State.view, State.chatHistory.length);
+    const { w, h } = islandSize(State.mode, State.view, State.chatHistory.length, this.currentOverviewHeight());
     const r = State.mode === "expanded" ? EXPANDED_CORNER : ROUNDED_CORNER;
     return { w, h, r };
   }
 
+  private currentOverviewHeight(): number {
+    const task = State.focusTask;
+    const isCodexSession = task?.source === "codex" && !task.isIntegration;
+    const planRows = isCodexSession && task.hasStructuredPlan ? task.planSteps.length : 0;
+    const pendingFinishedRows = isCodexSession && task.state === "finished" && task.hasStructuredPlan
+      ? task.planSteps.filter((step) => step.status === "pending").length : 0;
+    return overviewHeight(planRows, pendingFinishedRows, State.otherTasks.length);
+  }
+
   private animateGeometry(shrinking: boolean) {
     const { w, h, r } = this.targetSize();
+    if (State.view === "overview") this.overviewHeightTarget = h;
     if (shrinking) {
       this.width.curveTowards(w);
       this.height.curveTowards(h);

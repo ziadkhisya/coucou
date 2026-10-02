@@ -3,6 +3,8 @@ import { Island } from "../src/island/island";
 import { State, type AgentTask } from "../src/core/state";
 
 const island = new Island(document.getElementById("root")!);
+// Keep the gallery state open while inspecting variants; production keeps the normal auto-close delay.
+island.fsm.homeToPetitDelay = 3600;
 const projectNames = ["DropshiFlow", "Coucou Windows", "Research workspace", "Personal site"];
 const colors = ["#35A67A", "#60A5FA", "#F29B38", "#A78BFA"];
 
@@ -46,6 +48,7 @@ const defaultPlan = [
 function show(kind: string) {
   const active = kind === "two" ? [session(0), session(1)]
     : kind === "many" ? [session(0), session(1), session(2), session(3)]
+    : kind === "rail" ? [session(0), session(1, longName), session(2, "Build and validation workspace", "thinking"), session(3, "Design system", "finished"), session(4, "Release validation", "working"), session(5, "Long-running docs and packaging check", "thinking")]
     : kind === "long" ? [session(0, longName)]
     : kind === "finished" ? [session(0, "DropshiFlow", "finished")]
     : kind === "approval" ? [session(0, "DropshiFlow", "approval")]
@@ -97,6 +100,26 @@ function show(kind: string) {
   document.querySelectorAll<HTMLElement>(".view").forEach((view) => {
     view.classList.toggle("on", view.classList.contains(viewName));
   });
+  if (kind === "rail") {
+    active[1].planSteps = [
+      { text: "Inspect current build", status: "completed" },
+      { text: "Prepare Windows package", status: "in_progress" },
+      { text: "Verify installed version", status: "pending" },
+    ];
+    active[1].hasStructuredPlan = true;
+    active[1].completedPlanCount = 1;
+    active[1].totalPlanCount = 3;
+    active[1].semanticStatus = "Prepare Windows package";
+    active[2].semanticStatus = "Building application";
+    active[3].planSteps = [
+      { text: "Review existing tokens", status: "completed" },
+      { text: "Document component spacing", status: "pending" },
+    ];
+    active[3].hasStructuredPlan = true;
+    active[3].completedPlanCount = 1;
+    active[3].totalPlanCount = 2;
+    active[3].semanticStatus = "Task finished";
+  }
   document.querySelectorAll<HTMLButtonElement>("#preview-controls button").forEach((button) => {
     button.classList.toggle("selected", button.dataset.state === kind);
   });

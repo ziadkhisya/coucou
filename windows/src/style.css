@@ -413,6 +413,7 @@ body {
 
 .overview {
   display: flex;
+  align-items: center;
   gap: 8px;
   height: 100%;
 }
@@ -422,9 +423,35 @@ body {
   min-width: 0;
 }
 
+.overview.codex-session > .left {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.overview.codex-session > .left > .card,
+.overview.codex-session .left-body,
+.overview.codex-session .card-body {
+  height: auto;
+}
+
+.overview.codex-session > .left > .card {
+  width: 100%;
+}
+
 .overview > .right {
-  flex: 0 0 172px;
+  flex: 0 0 176px;
   min-width: 0;
+  align-self: flex-start;
+}
+
+.overview.single-other-session > .right {
+  flex-basis: 156px;
+}
+
+.overview > .right > .card {
+  height: auto;
+  max-height: 100%;
 }
 
 .overview:not(.has-sessions) > .right {
@@ -504,6 +531,8 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.session-name[title] { cursor: default; }
+
 .codex-progress {
   min-height: 0;
   max-height: 108px;
@@ -539,6 +568,16 @@ body {
 .plan-row.in_progress .plan-marker { color: #48c58a; }
 .plan-row.pending { color: #858b92; }
 .plan-row.pending .plan-marker { color: #6d737b; }
+
+.plan-completion-note {
+  flex: 0 0 14px;
+  min-width: 0;
+  overflow: hidden;
+  color: #c89e63;
+  font: 450 9px/14px var(--font);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 
 .plan-text,
 .semantic-status-text {
@@ -654,8 +693,9 @@ body {
 /* ── Agent pills ────────────────────────────────────────────────────────── */
 
 .session-rail {
-  height: 100%;
+  height: auto;
   min-height: 0;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -671,6 +711,7 @@ body {
 
 .session-list {
   min-height: 0;
+  max-height: 168px;
   overflow-y: auto;
   overscroll-behavior: contain;
   display: flex;
@@ -695,10 +736,10 @@ body {
 
 .session-pill {
   position: relative;
-  height: 24px;
-  flex: 0 0 24px;
+  height: 38px;
+  flex: 0 0 38px;
   min-width: 0;
-  padding: 3px 5px;
+  padding: 4px 6px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -736,7 +777,7 @@ body {
 
 .session-pill-state {
   color: var(--dim-3);
-  font: 400 8px/1.1 var(--font);
+  font: 450 9px/1.15 var(--font);
 }
 
 .session-pill:hover {

@@ -59,7 +59,7 @@ fn update_plan_tool() -> Value {
     json!({
         "name": "update_plan",
         "title": "Update Coucou task progress",
-        "description": "Publish the concise task checklist shown by Coucou. For meaningful multi-step work, create 3-7 outcome-focused steps and call again when step statuses change. Use completed, in_progress, or pending. Do not call for trivial one-step tasks.",
+        "description": "Publish the concise checklist shown by Coucou. For meaningful multi-step work, use 3-7 outcome-oriented steps with short labels (3-7 words and usually under 60 characters). Update statuses as work progresses using completed, in_progress, or pending. Preserve essential meaning when a label needs more detail. Skip trivial one-step tasks.",
         "inputSchema": {
             "type": "object",
             "properties": {

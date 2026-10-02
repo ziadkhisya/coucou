@@ -154,7 +154,14 @@ function buildOverview(actions: ViewActions): ViewHost {
   let lastFocus: string | null = null;
   let mode: "session" | "card" | null = null;
   let cardKey = "";
-  let progressKey = "";
+  let progressRows: HTMLElement[] = [];
+  let progressMarkers: HTMLElement[] = [];
+  let progressTexts: HTMLElement[] = [];
+  let semanticRow: HTMLElement | null = null;
+  let semanticDot: HTMLElement | null = null;
+  let semanticText: HTMLElement | null = null;
+  let planMore: HTMLElement | null = null;
+  let completionNote: HTMLElement | null = null;
 
   const hooks: IntegrationCardHooks = {
     get detailOpen() {
@@ -185,12 +192,18 @@ function buildOverview(actions: ViewActions): ViewHost {
         detailOpen = false;
         cardKey = "";
         mode = null;
+        clear(checklist);
+        progressRows = [];
+        progressMarkers = [];
+        progressTexts = [];
+        semanticRow = semanticDot = semanticText = planMore = completionNote = null;
       }
 
       // Live Claude Code and Codex sessions get their own ticker. Provider
       // setup cards remain available when no session is focused.
       const isCodeSession = task?.source === "claudeCode" || task?.source === "codex";
       const sessionActive = Boolean(task && isCodeSession && !task.isIntegration);
+      el.classList.toggle("codex-session", Boolean(task?.source === "codex" && !task.isIntegration));
 
       if (task && sessionActive) {
         if (mode !== "session") {
@@ -198,11 +211,15 @@ function buildOverview(actions: ViewActions): ViewHost {
           leftBody.append(tickerBody);
           mode = "session";
           cardKey = "";
-          progressKey = "";
+          progressRows = [];
+          progressMarkers = [];
+          progressTexts = [];
+          semanticRow = semanticDot = semanticText = planMore = completionNote = null;
         }
         tickerBody.classList.toggle("session-done", task.state === "finished" || task.state === "interrupted");
         clear(projectName);
-        projectName.append(dot(task.color, 7), h("span", { class: "session-name-text", text: task.name }));
+        projectName.title = task.name;
+        projectName.append(dot(task.color, 7), h("span", { class: "session-name-text", text: task.name, title: task.name }));
         clear(who);
         who.append(h("span", { class: "provider-name", text: providerLabel(task) }));
         sessionState.textContent = task.state === "approval" ? "Needs approval"
@@ -217,32 +234,19 @@ function buildOverview(actions: ViewActions): ViewHost {
           : "Connected";
         sessionState.className = `session-state ${task.state}`;
         if (task.provider === "codex") {
-          activityCount.textContent = task.hasStructuredPlan ? `${task.completedPlanCount} / ${task.totalPlanCount} complete` : "";
+          activityCount.textContent = task.hasStructuredPlan ? `${task.completedPlanCount} / ${task.totalPlanCount} steps complete` : "";
           ticker.el.style.display = "none";
           checklist.style.display = "flex";
-          const nextProgressKey = [task.hasStructuredPlan, task.semanticStatus, task.completedPlanCount,
-            task.totalPlanCount, ...task.planSteps.map((step) => `${step.status}:${step.text}`)].join("|");
-          if (nextProgressKey !== progressKey) {
-            progressKey = nextProgressKey;
-            clear(checklist);
-            if (task.hasStructuredPlan && task.planSteps.length > 0) {
-              const rows = task.planSteps.slice(0, 6);
-              for (const step of rows) {
-                const marker = step.status === "completed" ? "✓" : step.status === "in_progress" ? "●" : "○";
-                checklist.append(h("div", {
-                  class: `plan-row ${step.status}`,
-                  title: step.text,
-                  "aria-label": `${step.status === "completed" ? "Completed" : step.status === "in_progress" ? "In progress" : "Upcoming"}: ${step.text}`,
-                }, h("span", { class: "plan-marker", text: marker }), h("span", { class: "plan-text", text: step.text })));
-              }
-              if (task.planSteps.length > 6) checklist.append(h("div", { class: "plan-more", text: `+${task.planSteps.length - 6} more steps` }));
-            } else {
-              checklist.append(h("div", { class: "semantic-status-row" },
-                h("span", { class: `semantic-dot ${task.state}` }),
-                h("span", { class: "semantic-status-text", text: task.semanticStatus || "Working on the task" }),
-              ));
-            }
-          }
+          syncCodexProgress(task, checklist, {
+            get rows() { return progressRows; }, set rows(value) { progressRows = value; },
+            get markers() { return progressMarkers; }, set markers(value) { progressMarkers = value; },
+            get texts() { return progressTexts; }, set texts(value) { progressTexts = value; },
+            get semanticRow() { return semanticRow; }, set semanticRow(value) { semanticRow = value; },
+            get semanticDot() { return semanticDot; }, set semanticDot(value) { semanticDot = value; },
+            get semanticText() { return semanticText; }, set semanticText(value) { semanticText = value; },
+            get planMore() { return planMore; }, set planMore(value) { planMore = value; },
+            get completionNote() { return completionNote; }, set completionNote(value) { completionNote = value; },
+          });
         } else {
           activityCount.textContent = Math.max(task.stepRevision, task.steps.length) > 0
             ? `${Math.max(task.stepRevision, task.steps.length)} actions` : "";
@@ -269,6 +273,7 @@ function buildOverview(actions: ViewActions): ViewHost {
 
       const others = State.otherTasks;
       el.classList.toggle("has-sessions", others.length > 0);
+      el.classList.toggle("single-other-session", others.length === 1);
       rightColumn.style.display = others.length === 0 ? "none" : "";
       const nextOrder = others.map((t) => t.id).join("|");
       const pillKey = others.map((t) => `${t.id}:${t.name}:${t.state}:${t.pillBadge ?? ""}:${t.completedPlanCount}:${t.totalPlanCount}:${t.semanticStatus}`).join("|");
@@ -292,10 +297,10 @@ function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {
     canvas,
     h("span", { class: "session-pill-copy" },
       h("span", { class: "session-pill-name", text: task.name }),
-      h("span", { class: "session-pill-state", text: `${providerLabel(task)} · ${task.hasStructuredPlan && task.totalPlanCount ? `${task.completedPlanCount}/${task.totalPlanCount}` : task.semanticStatus || (task.state === "working" ? "Working" : task.state === "thinking" ? "Thinking" : task.state === "approval" ? "Approval" : task.state === "finished" ? "Finished" : task.state === "error" ? "Error" : "Active")}` }),
+      h("span", { class: "session-pill-state", text: pillProgressLabel(task) }),
     ),
   );
-  pill.setAttribute("aria-label", `Focus ${task.name}, ${task.state}`);
+  pill.setAttribute("aria-label", `Focus ${task.name}, ${pillProgressLabel(task)}`);
   pill.style.setProperty("--session-color", task.color);
   pill.style.borderColor = `${task.color}24`;
 
@@ -308,6 +313,106 @@ function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {
     pill.append(badge);
   }
   return pill;
+}
+
+type ProgressNodes = {
+  rows: HTMLElement[];
+  markers: HTMLElement[];
+  texts: HTMLElement[];
+  semanticRow: HTMLElement | null;
+  semanticDot: HTMLElement | null;
+  semanticText: HTMLElement | null;
+  planMore: HTMLElement | null;
+  completionNote: HTMLElement | null;
+};
+
+function syncCodexProgress(task: AgentTask, parent: HTMLElement, nodes: ProgressNodes) {
+  const steps = task.hasStructuredPlan ? task.planSteps.slice(0, 6) : [];
+  if (steps.length === 0) {
+    for (const row of nodes.rows) row.remove();
+    nodes.rows.length = nodes.markers.length = nodes.texts.length = 0;
+    nodes.planMore?.remove();
+    nodes.planMore = null;
+    nodes.completionNote?.remove();
+    nodes.completionNote = null;
+    if (!nodes.semanticRow) {
+      nodes.semanticDot = h("span", { class: "semantic-dot" });
+      nodes.semanticText = h("span", { class: "semantic-status-text" });
+      nodes.semanticRow = h("div", { class: "semantic-status-row" }, nodes.semanticDot, nodes.semanticText);
+      parent.append(nodes.semanticRow);
+    }
+    nodes.semanticDot!.className = `semantic-dot ${task.state}`;
+    nodes.semanticText!.textContent = task.semanticStatus || "Working on the task";
+    return;
+  }
+
+  nodes.semanticRow?.remove();
+  nodes.semanticRow = nodes.semanticDot = nodes.semanticText = null;
+  while (nodes.rows.length > steps.length) {
+    nodes.rows.pop()!.remove();
+    nodes.markers.pop();
+    nodes.texts.pop();
+  }
+  for (let index = 0; index < steps.length; index++) {
+    let row = nodes.rows[index];
+    let marker = nodes.markers[index];
+    let text = nodes.texts[index];
+    if (!row || !marker || !text) {
+      marker = h("span", { class: "plan-marker" });
+      text = h("span", { class: "plan-text" });
+      row = h("div", {}, marker, text);
+      nodes.rows[index] = row;
+      nodes.markers[index] = marker;
+      nodes.texts[index] = text;
+      parent.insertBefore(row, nodes.planMore ?? nodes.completionNote);
+    }
+    const step = steps[index];
+    const status = step.status === "in_progress" ? "in_progress" : step.status;
+    const label = status === "completed" ? "Completed" : status === "in_progress" ? "In progress" : "Upcoming";
+    row.className = `plan-row ${status}`;
+    row.title = step.text;
+    row.setAttribute("aria-label", `${label}: ${step.text}`);
+    marker.textContent = status === "completed" ? "✓" : status === "in_progress" ? "●" : "○";
+    text.textContent = step.text;
+    text.title = step.text;
+  }
+  if (task.planSteps.length > 6) {
+    if (!nodes.planMore) {
+      nodes.planMore = h("div", { class: "plan-more" });
+    }
+    parent.insertBefore(nodes.planMore, nodes.completionNote);
+    nodes.planMore.textContent = `+${task.planSteps.length - 6} more steps`;
+  } else {
+    nodes.planMore?.remove();
+    nodes.planMore = null;
+  }
+  const pending = task.planSteps.filter((step) => step.status === "pending").length;
+  if (task.state === "finished" && pending > 0) {
+    if (!nodes.completionNote) {
+      nodes.completionNote = h("div", { class: "plan-completion-note" });
+      parent.append(nodes.completionNote);
+    }
+    nodes.completionNote.textContent = `Turn finished · ${pending} ${pending === 1 ? "step" : "steps"} not marked complete`;
+  } else {
+    nodes.completionNote?.remove();
+    nodes.completionNote = null;
+  }
+}
+
+function pillProgressLabel(task: AgentTask): string {
+  const state = task.state === "working" ? "Working"
+    : task.state === "thinking" ? "Thinking"
+    : task.state === "approval" ? "Needs approval"
+    : task.state === "finished" ? "Finished"
+    : task.state === "interrupted" ? "Stopped"
+    : task.state === "error" ? "Error"
+    : task.state === "question" ? "Needs input"
+    : task.state === "ratelimit" ? "Rate limited"
+    : "Connected";
+  if (task.state === "approval") return state;
+  if (task.hasStructuredPlan && task.totalPlanCount) return `${task.completedPlanCount}/${task.totalPlanCount} · ${state}`;
+  return task.semanticStatus && !["Connected", "Plan complete"].includes(task.semanticStatus)
+    ? task.semanticStatus : state;
 }
 
 // ── Empty ─────────────────────────────────────────────────────────────────────
