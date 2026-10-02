@@ -103,6 +103,33 @@ fn find_in(dirs: &[PathBuf]) -> Option<PathBuf> {
 }
 
 pub fn executable() -> Option<PathBuf> {
+    // Codex Desktop installs its authenticated CLI into a versioned per-user
+    // directory that is usually absent from the Windows user's persistent
+    // PATH. Prefer the explicit runtime path when present, then discover the
+    // newest usable Desktop bundle before falling back to an npm CLI install.
+    if let Some(configured) = std::env::var_os("CODEX_CLI_PATH").map(PathBuf::from) {
+        if configured.is_file() {
+            return Some(configured);
+        }
+    }
+    if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+        let root = PathBuf::from(local_app_data).join("OpenAI").join("Codex").join("bin");
+        if let Ok(entries) = std::fs::read_dir(root) {
+            let mut bundled: Vec<(std::time::SystemTime, PathBuf)> = entries
+                .filter_map(Result::ok)
+                .filter(|entry| entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false))
+                .filter_map(|entry| {
+                    let executable = entry.path().join("codex.exe");
+                    let modified = executable.metadata().ok()?.modified().ok()?;
+                    Some((modified, executable))
+                })
+                .collect();
+            bundled.sort_by(|left, right| right.0.cmp(&left.0));
+            if let Some((_, executable)) = bundled.into_iter().next() {
+                return Some(executable);
+            }
+        }
+    }
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| {
             std::env::split_paths(&p)
