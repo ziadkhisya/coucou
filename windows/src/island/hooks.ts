@@ -517,7 +517,7 @@ function handleHook(island: Island, payload: HookPayload) {
       cancelApprovalForEvent(island, provider, sessionId, payload.turn_id);
       State.updateTask(taskId, "interrupted");
       if (provider === "codex") State.setSemanticStatus(taskId, "Work stopped");
-      else State.appendStep(taskId, "Interrupted");
+      State.appendStep(taskId, "Interrupted");
       State.setPillBadge(taskId, "interrupted");
       if (runtime?.finishTimer != null) window.clearTimeout(runtime.finishTimer);
       if (runtime) runtime.finishTimer = null;
