@@ -221,14 +221,16 @@ fn log_usage_if_changed(source: &str, value: &Value, received_at: u64, last: &mu
     let (five, week) = usage_summary(value);
     if (five, week) == *last { return; }
     *last = (five, week);
-    let five_duration = window_by_duration(
-        value.get("result").unwrap_or(value).get("rateLimitsByLimitId").and_then(|limits| limits.get("codex"))
-            .or_else(|| value.get("result").unwrap_or(value).get("rateLimits")).unwrap_or(&Value::Null), 300)
-    ).and_then(|window| window.get("windowDurationMins")).and_then(Value::as_u64).unwrap_or(300);
-    let week_duration = window_by_duration(
-        value.get("result").unwrap_or(value).get("rateLimitsByLimitId").and_then(|limits| limits.get("codex"))
-            .or_else(|| value.get("result").unwrap_or(value).get("rateLimits")).unwrap_or(&Value::Null), 10_080)
-    ).and_then(|window| window.get("windowDurationMins")).and_then(Value::as_u64).unwrap_or(10_080);
+    let root = value.get("result").unwrap_or(value);
+    let limits = root.get("rateLimitsByLimitId").and_then(|limits| limits.get("codex"))
+        .or_else(|| root.get("rateLimits"));
+    let duration = |minutes, fallback| limits
+        .and_then(|bucket| window_by_duration(bucket, minutes))
+        .and_then(|window| window.get("windowDurationMins"))
+        .and_then(Value::as_u64)
+        .unwrap_or(fallback);
+    let five_duration = duration(300, 300);
+    let week_duration = duration(10_080, 10_080);
     log::line(format!("Codex usage {source}: 5h used={} duration={}m; week used={} duration={}m; receivedAt={received_at}",
         five.map_or_else(|| "—".into(), |n| format!("{n}%")), five_duration,
         week.map_or_else(|| "—".into(), |n| format!("{n}%")), week_duration));
