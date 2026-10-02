@@ -160,19 +160,30 @@ test("Codex plans are session-scoped, renderable progress and survive Stop uncha
   assert.deepEqual(second.planSteps, plan.steps);
   assert.equal(second.completedPlanCount, 1);
   assert.equal(second.hasStructuredPlan, true);
-  assert.equal(first.semanticStatus, "Modify event handling");
+  assert.equal(first.currentStatus, "Modify event handling");
 
   dispatchHook({ provider: "codex", hook_event_name: "Stop", session_id: "plan-a", turn_id: "turn-a", last_assistant_message: "Completed validation." });
   assert.equal(first.planSteps.filter((step) => step.status === "completed").length, 1);
   assert.equal(first.planSteps.filter((step) => step.status === "pending").length, 2);
-  assert.equal(first.semanticStatus, "Completed validation.");
+  assert.equal(first.currentStatus, "Completed validation.");
 });
 
 test("Codex fallback status is semantic and never exposes the command", () => {
   dispatchHook({ provider: "codex", hook_event_name: "PreToolUse", session_id: "semantic-fallback", cwd: "C:/work/fallback", tool_name: "Bash", tool_input: { command: "Get-Content secret.txt" } });
   const task = sessionTask("codex", "semantic-fallback");
-  assert.equal(task.semanticStatus, "Running a project command");
+  assert.equal(task.currentStatus, "Running a project command");
   assert.equal(task.steps.length, 0);
+});
+
+test("Coucou progress tool publishes task title and current status without steps", () => {
+  dispatchHook({ provider: "codex", hook_event_name: "UserPromptSubmit", session_id: "metadata-only", turn_id: "meta-turn", cwd: "C:/work/coucou", timestamp: "2026-10-02T12:00:00Z", prompt: "Please inspect the naming path" });
+  dispatchHook({ provider: "codex", hook_event_name: "PreToolUse", session_id: "metadata-only", turn_id: "meta-turn", cwd: "C:/work/coucou", tool_name: "mcp__coucou_progress__update_plan", tool_input: { task_title: "Fix session naming", current_status: "Tracing project metadata" } });
+  const task = sessionTask("codex", "metadata-only");
+  assert.equal(task.name, "Coucou");
+  assert.equal(task.taskTitle, "Fix session naming");
+  assert.equal(task.currentStatus, "Tracing project metadata");
+  assert.equal(task.hasStructuredPlan, false);
+  assert.equal(task.taskStartedAt, Date.parse("2026-10-02T12:00:00Z"));
 });
 
 test("same session id stays isolated across Claude and Codex providers", () => {
@@ -192,10 +203,10 @@ test("same session id stays isolated across Claude and Codex providers", () => {
   assert.notEqual(claude.id, codex.id);
   assert.equal(claude.source, "claudeCode");
   assert.equal(codex.source, "codex");
-  assert.equal(claude.name, "claude-project");
-  assert.equal(codex.name, "codex-project");
+  assert.equal(claude.name, "Claude Project");
+  assert.equal(codex.name, "Codex Project");
   assert.deepEqual(claude.steps, ["Claude task"]);
-  assert.equal(codex.semanticStatus, "Understanding request");
+  assert.equal(codex.currentStatus, "Reviewing project files");
   assert.deepEqual(codex.steps, []);
 });
 
@@ -283,7 +294,7 @@ test("a delayed finish timer cannot clear a newer run", () => {
 
   assert.equal(task.state, "thinking");
   assert.equal(task.pillBadge, null);
-  assert.equal(task.semanticStatus, "Understanding request");
+  assert.equal(task.currentStatus, "Reviewing project files");
   assert.deepEqual(task.steps, []);
 });
 
@@ -319,7 +330,7 @@ test("a delayed SessionStart cannot clear an already active turn", () => {
   dispatchHook({ provider: "codex", hook_event_name: "SessionStart", session_id: "late-session-start", cwd: "C:/work/late-start" });
 
   assert.equal(task.state, "thinking");
-  assert.equal(task.semanticStatus, "Understanding request");
+  assert.equal(task.currentStatus, "Reviewing project files");
   assert.deepEqual(task.steps, []);
 });
 
@@ -334,7 +345,7 @@ test("same-turn tool events after Stop stay terminal until a new turn", () => {
   dispatchHook({ provider: "codex", hook_event_name: "UserPromptSubmit", session_id: "terminal-turn", turn_id: "turn-next", cwd: "C:/work/terminal", prompt: "next turn" });
   dispatchHook({ provider: "codex", hook_event_name: "PostToolUse", session_id: "terminal-turn", turn_id: "turn-ended", tool_name: "Bash", tool_status: "success" });
   assert.equal(task.state, "thinking");
-  assert.equal(task.semanticStatus, "Understanding request");
+  assert.equal(task.currentStatus, "Reviewing project files");
   assert.deepEqual(task.steps, []);
 });
 

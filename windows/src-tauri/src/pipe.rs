@@ -172,6 +172,8 @@ async fn handle(app: AppHandle, mut pipe: NamedPipeServer) {
         return;
     };
 
+    enrich_project_identity(&mut payload);
+
     let event = payload
         .get("hook_event_name")
         .and_then(Value::as_str)
@@ -232,6 +234,43 @@ async fn handle(app: AppHandle, mut pipe: NamedPipeServer) {
     };
     let _ = app.emit_to(WINDOW_LABEL, "hook", identity.closed_event(&id, resolution));
     let _ = pipe.disconnect();
+}
+
+/// Resolve stable repository identity locally; never label a session from the
+/// transient Codex task/goal directory supplied as cwd.
+fn enrich_project_identity(payload: &mut Value) {
+    let Some(cwd) = payload.get("cwd").and_then(Value::as_str) else { return };
+    let start = std::path::Path::new(cwd);
+    let mut found = None;
+    for directory in start.ancestors() {
+        let dot_git = directory.join(".git");
+        if dot_git.exists() {
+            let git_dir = if dot_git.is_dir() { dot_git } else {
+                std::fs::read_to_string(&dot_git).ok()
+                    .and_then(|text| text.trim().strip_prefix("gitdir:").map(str::trim).map(|p| directory.join(p)))
+                    .unwrap_or(dot_git)
+            };
+            let root_name = directory.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let config = std::fs::read_to_string(git_dir.join("config")).unwrap_or_default();
+            let mut in_origin = false;
+            let mut remote = None;
+            for line in config.lines().map(str::trim) {
+                if line.starts_with('[') { in_origin = line.eq_ignore_ascii_case("[remote \"origin\"]"); }
+                else if in_origin && line.to_ascii_lowercase().starts_with("url =") {
+                    remote = line.split_once('=').map(|(_, value)| value.trim().to_string());
+                    break;
+                }
+            }
+            found = Some((root_name.to_owned(), remote));
+            break;
+        }
+    }
+    let Some((root, remote)) = found else { return };
+    if payload.get("project_name").and_then(Value::as_str).is_none_or(str::is_empty) {
+        payload["project_name"] = json!(root);
+    }
+    payload["git_root_name"] = json!(root);
+    if let Some(remote) = remote { payload["git_remote"] = json!(remote); }
 }
 
 fn parse_frame(bytes: &[u8]) -> Option<Value> {

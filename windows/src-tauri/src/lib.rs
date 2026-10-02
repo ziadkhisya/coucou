@@ -2,6 +2,7 @@
 
 mod claude;
 mod codex;
+mod codex_rate_limits;
 mod files;
 mod hooks;
 mod integrations;
@@ -509,6 +510,7 @@ pub fn run() {
             ));
             hooks::ensure_hook_exe(&handle);
             pipe::start(handle.clone());
+            codex_rate_limits::start(handle.clone());
             integrations::start(handle.clone());
             Ok(())
         })

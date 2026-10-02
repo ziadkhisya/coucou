@@ -59,10 +59,12 @@ fn update_plan_tool() -> Value {
     json!({
         "name": "update_plan",
         "title": "Update Coucou task progress",
-        "description": "Publish the concise checklist shown by Coucou. For meaningful multi-step work, use 3-7 outcome-oriented steps with short labels (3-7 words and usually under 60 characters). Update statuses as work progresses using completed, in_progress, or pending. Preserve essential meaning when a label needs more detail. Skip trivial one-step tasks.",
+        "description": "Publish semantic progress to Coucou. Set task_title to a concise 3-7 word description of the user's current objective and current_status to what you are doing now. Update the title only when the objective materially changes; update status when the work phase changes. For meaningful multi-step work, include 3-7 outcome-oriented steps, usually under 60 characters each, and update their statuses. For trivial work, send task_title/current_status without steps. Never use commands, tool names, paths, or prompt/folder slugs as labels.",
         "inputSchema": {
             "type": "object",
             "properties": {
+                "task_title": { "type": "string", "minLength": 1, "maxLength": 96 },
+                "current_status": { "type": "string", "minLength": 1, "maxLength": 120 },
                 "steps": {
                     "type": "array",
                     "minItems": 1,
@@ -79,7 +81,7 @@ fn update_plan_tool() -> Value {
                 },
                 "message": { "type": "string", "maxLength": MAX_STEP_TEXT }
             },
-            "required": ["steps"],
+            "required": [],
             "additionalProperties": false
         },
         "annotations": {
@@ -101,23 +103,24 @@ fn call_tool(params: &Value) -> Value {
         });
     }
 
-    let valid = params
-        .get("arguments")
-        .and_then(|arguments| arguments.get("steps"))
-        .and_then(Value::as_array)
-        .filter(|steps| !steps.is_empty() && steps.len() <= MAX_STEPS)
-        .is_some_and(|steps| steps.iter().all(|step| {
+    let arguments = params.get("arguments").unwrap_or(&Value::Null);
+    let valid_text = |key: &str, max: usize| arguments.get(key).is_some_and(|value| {
+        value.as_str().is_some_and(|text| !text.trim().is_empty() && text.chars().count() <= max)
+    });
+    let steps = arguments.get("steps").and_then(Value::as_array);
+    let valid_steps = steps.is_some_and(|steps| !steps.is_empty() && steps.len() <= MAX_STEPS && steps.iter().all(|step| {
             let text_ok = step.get("text").and_then(Value::as_str)
                 .is_some_and(|text| !text.trim().is_empty() && text.chars().count() <= MAX_STEP_TEXT);
             let status_ok = matches!(step.get("status").and_then(Value::as_str),
                 Some("pending" | "in_progress" | "inProgress" | "completed"));
             text_ok && status_ok
         }));
+    let valid = valid_text("task_title", 96) || valid_text("current_status", 120) || valid_text("message", MAX_STEP_TEXT) || valid_steps;
 
     let text = if valid {
-        "Plan update accepted; Coucou receives the progress through its Codex hook."
+        "Semantic progress accepted; Coucou receives it through the Codex hook."
     } else {
-        "Plan update was not published because its steps were malformed; continue the task normally."
+        "Semantic progress was not published because its fields were empty or malformed; continue normally."
     };
     json!({ "content": [{ "type": "text", "text": text }] })
 }
@@ -139,7 +142,24 @@ mod tests {
             .lines().map(|line| serde_json::from_str(line).unwrap()).collect();
         assert_eq!(responses[0]["result"]["tools"][0]["name"], "update_plan");
         assert_eq!(responses[1]["result"]["content"][0]["text"],
-            "Plan update accepted; Coucou receives the progress through its Codex hook.");
+            "Semantic progress accepted; Coucou receives it through the Codex hook.");
+    }
+
+    #[test]
+    fn accepts_status_and_title_without_a_plan() {
+        let response = call_tool(&json!({
+            "name": "update_plan",
+            "arguments": { "task_title": "Fix session naming", "current_status": "Tracing project metadata" }
+        }));
+        assert_eq!(response["content"][0]["text"],
+            "Semantic progress accepted; Coucou receives it through the Codex hook.");
+    }
+
+    #[test]
+    fn rejects_empty_semantic_update_without_breaking_the_server() {
+        let response = call_tool(&json!({ "name": "update_plan", "arguments": {} }));
+        assert_eq!(response["content"][0]["text"],
+            "Semantic progress was not published because its fields were empty or malformed; continue normally.");
     }
 
     #[test]

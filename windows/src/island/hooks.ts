@@ -3,7 +3,8 @@
 import { Bridge, onEvent } from "../core/bridge";
 import { Sound } from "../core/sound";
 import { State, type CodeProvider } from "../core/state";
-import { parseUpdatePlan } from "../core/plan";
+import { parseProgressUpdate } from "../core/progress";
+import { deriveProjectName } from "../core/project";
 import type { Island } from "./island";
 
 const FALLBACK_TASK: Record<CodeProvider, string> = {
@@ -20,6 +21,9 @@ interface HookPayload {
   turn_id?: string;
   event_seq?: number;
   cwd?: string;
+  project_name?: string;
+  git_root_name?: string;
+  git_remote?: string;
   message?: string;
   prompt?: string;
   last_assistant_message?: string;
@@ -30,6 +34,7 @@ interface HookPayload {
   tool_name?: string;
   tool_input?: Record<string, unknown>;
   tool_result?: Record<string, unknown>;
+  timestamp?: string | number;
 }
 
 interface SessionRuntime {
@@ -49,16 +54,6 @@ const MAX_ENDED_SESSION_TOMBSTONES = 256;
 const MAX_RETIRED_TURNS = 32;
 const approvalTimers = new Map<string, number>();
 let nextRunToken = 1;
-
-const PROJECT_ALIASES: Record<string, string> = {
-  "notch-buddy": "Notch Buddy",
-  notchbuddy: "Notch Buddy",
-  notch_buddy: "Notch Buddy",
-};
-
-function aliasProjectName(name: string): string {
-  return PROJECT_ALIASES[name.toLowerCase()] ?? name;
-}
 
 function lastPathComponent(p: string): string {
   const cleaned = p.replace(/[\\/]+$/, "");
@@ -254,7 +249,7 @@ function semanticToolStatus(tool: string, input: Record<string, unknown>): strin
   if (/git|commit|push|branch/.test(name)) return "Updating repository";
   if (/patch|edit|write|replace|multi.?edit/.test(name)) return "Editing files";
   if (/exec|command|shell|powershell|terminal|bash|cmd/.test(name)) return "Running a project command";
-  return "Working on the task";
+  return "Reviewing project context";
 }
 
 function conciseCompletion(message: string | undefined): string {
@@ -374,8 +369,8 @@ function handleHook(island: Island, payload: HookPayload) {
   }
 
   const cwd = payload.cwd ?? "";
-  const raw = lastPathComponent(cwd);
-  const projectName = aliasProjectName(raw || (provider === "codex" ? "Codex session" : "Session"));
+  const projectName = deriveProjectName({ projectName: payload.project_name, gitRootName: payload.git_root_name,
+    gitRemote: payload.git_remote, cwd });
   const runtime = runtimeFor(provider, sessionId);
   if (!acceptOrdering(runtime, payload, name)) {
     if (name === "PermissionRequest" && payload.request_id) void Bridge.approvalDecline(payload.request_id);
@@ -408,7 +403,7 @@ function handleHook(island: Island, payload: HookPayload) {
         task.hasStructuredPlan = false;
         task.completedPlanCount = 0;
         task.totalPlanCount = 0;
-        task.semanticStatus = "Connected";
+        task.currentStatus = "Connected";
         task.lastSemanticMessage = "";
         State.updateTask(taskId, "idle");
         task.pillBadge = null;
@@ -420,17 +415,17 @@ function handleHook(island: Island, payload: HookPayload) {
     case "UserPromptSubmit": {
       // A new turn supersedes any unanswered request from the same session.
       cancelApprovalForSession(island, provider, sessionId);
+      if (provider === "codex") {
+        const rawTime = payload.timestamp;
+        const parsedTime = typeof rawTime === "number" ? (rawTime > 10_000_000_000 ? rawTime : rawTime * 1000)
+          : typeof rawTime === "string" ? Date.parse(rawTime) : NaN;
+        State.resetTask(taskId, Number.isFinite(parsedTime) ? parsedTime : Date.now());
+      }
       State.updateTask(taskId, "thinking");
       State.setPillBadge(taskId, null);
       const asked = payload.prompt ?? payload.message;
       if (provider === "codex") {
-        task?.planSteps.splice(0);
-        if (task) {
-          task.hasStructuredPlan = false;
-          task.completedPlanCount = 0;
-          task.totalPlanCount = 0;
-        }
-        State.setSemanticStatus(taskId, "Understanding request");
+        State.setSemanticStatus(taskId, "Reviewing project files");
       } else if (asked) State.appendStep(taskId, asked.slice(0, 60));
       surface("overview", false);
       break;
@@ -441,8 +436,10 @@ function handleHook(island: Island, payload: HookPayload) {
       const tool = payload.tool_name ?? "Tool";
       if (provider === "codex") {
         if (isUpdatePlanToolName(tool)) {
-          const plan = parseUpdatePlan(payload.tool_input);
-          if (plan) State.setPlan(taskId, plan);
+          const update = parseProgressUpdate(payload.tool_input);
+          if (update?.taskTitle) State.setTaskTitle(taskId, update.taskTitle);
+          if (update?.steps) State.setPlan(taskId, update.steps);
+          if (update?.currentStatus) State.setSemanticStatus(taskId, update.currentStatus);
         } else if (!task?.hasStructuredPlan) {
           State.setSemanticStatus(taskId, semanticToolStatus(tool, payload.tool_input ?? {}));
         }

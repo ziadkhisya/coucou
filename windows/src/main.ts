@@ -4,6 +4,7 @@ import "./style.css";
 import { Bridge, IS_TAURI, onEvent } from "./core/bridge";
 import { Sound } from "./core/sound";
 import { State, type Settings } from "./core/state";
+import { mergeCodexUsage, parseCodexUsage } from "./core/usage";
 import { initializeChatSession, reconcileChatSession } from "./core/chat-session";
 import { Island } from "./island/island";
 import { declinePendingApproval, registerHookHandlers } from "./island/hooks";
@@ -55,6 +56,13 @@ async function main() {
 
   await onEvent<null>("screen-changed", () => void Bridge.reposition());
   await onEvent<null>("outside-click", () => island.dismissOutside());
+  await onEvent<{ kind?: string; payload?: unknown }>("codex-rate-limits", (event) => {
+    if (event.kind === "unavailable") { State.setCodexUsage({ available: false, fetchedAt: Date.now(), error: "unavailable" }); return; }
+    const next = event.kind === "updated"
+      ? mergeCodexUsage(State.codexUsage, event.payload)
+      : parseCodexUsage(event.payload);
+    if (next) State.setCodexUsage(next);
+  });
 
   // The settings window writes preferences; apply them here without a restart.
   await onEvent<Settings>("settings-changed", (s) => {

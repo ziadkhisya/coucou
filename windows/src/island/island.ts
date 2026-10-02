@@ -11,6 +11,7 @@ import {
 } from "../core/layout";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
+import { formatTaskDuration, taskElapsedMs } from "../core/timer";
 import { BotEngine, hexToRGB } from "../mochi/engine";
 import { Greeting } from "../mochi/greeting";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
@@ -483,7 +484,8 @@ export class Island {
     const planRows = isCodexSession && task.hasStructuredPlan ? task.planSteps.length : 0;
     const pendingFinishedRows = isCodexSession && task.state === "finished" && task.hasStructuredPlan
       ? task.planSteps.filter((step) => step.status === "pending").length : 0;
-    return overviewHeight(planRows, pendingFinishedRows, State.otherTasks.length);
+    return overviewHeight(planRows, pendingFinishedRows, State.otherTasks.length,
+      Boolean(isCodexSession && (task.taskTitle || State.codexUsage?.available)));
   }
 
   private animateGeometry(shrinking: boolean) {
@@ -891,12 +893,15 @@ export class Island {
     this.miniGrid.style.opacity = showGrid && !showProgress ? "1" : "0";
     this.compactProgress.style.opacity = showProgress ? "1" : "0";
     if (showProgress && focused) {
+      const elapsed = formatTaskDuration(taskElapsedMs(focused));
       const progress = focused.hasStructuredPlan && focused.totalPlanCount
         ? `${focused.completedPlanCount}/${focused.totalPlanCount}`
-        : focused.state === "finished" ? "Finished" : focused.semanticStatus || "Working";
-      const label = `${focused.name} · ${progress}`;
-      if (this.compactProject.textContent !== focused.name) this.compactProject.textContent = focused.name;
-      if (this.compactStatus.textContent !== progress) this.compactStatus.textContent = progress;
+        : focused.state === "finished" ? "Finished" : focused.currentStatus || "Reviewing project files";
+      const compactTitle = focused.taskTitle || focused.name;
+      const compactDetail = [progress, elapsed].filter(Boolean).join(" · ");
+      const label = `${focused.name} · ${focused.taskTitle} · ${compactDetail}`;
+      if (this.compactProject.textContent !== compactTitle) this.compactProject.textContent = compactTitle;
+      if (this.compactStatus.textContent !== compactDetail) this.compactStatus.textContent = compactDetail;
       this.compactProgress.title = label;
     }
     if (showGrid && !showProgress) {

@@ -11,6 +11,8 @@ import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
 import { buildPrompt } from "./chat";
 import { buildChoose, buildUpload, buildUploading } from "./upload";
 import { renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
+import { formatTaskDuration, taskElapsedMs } from "../core/timer";
+import { displayPercent, formatResetTime } from "../core/usage";
 
 export interface ViewActions {
   setView(v: IslandViewName): void;
@@ -125,12 +127,16 @@ export function buildHeader(actions: ViewActions): ViewHost {
 function buildOverview(actions: ViewActions): ViewHost {
   const ticker = new Ticker();
   const projectName = h("div", { class: "session-name" });
+  const taskTimer = h("span", { class: "task-timer" });
+  const taskTitle = h("div", { class: "task-title" });
+  const usageSummary = h("span", { class: "usage-summary" });
   const who = h("div", { class: "session-provider" });
   const sessionState = h("span", { class: "session-state" });
   const activityCount = h("span", { class: "session-count" });
   const meta = h("div", { class: "session-meta" }, who, h("span", { class: "meta-separator", text: "·" }), sessionState, activityCount);
   const checklist = h("div", { class: "codex-progress", "aria-live": "polite" });
-  const tickerBody = h("div", { class: "card-body" }, projectName, meta, checklist, ticker.el);
+  const taskLine = h("div", { class: "task-line" }, taskTitle, usageSummary);
+  const tickerBody = h("div", { class: "card-body" }, h("div", { class: "project-line" }, projectName, taskTimer), taskLine, meta, checklist, ticker.el);
   const leftBody = h("div", { class: "left-body" });
   const jump = h(
     "button",
@@ -162,6 +168,7 @@ function buildOverview(actions: ViewActions): ViewHost {
   let semanticText: HTMLElement | null = null;
   let planMore: HTMLElement | null = null;
   let completionNote: HTMLElement | null = null;
+  let lastTimerSecond = -1;
 
   const hooks: IntegrationCardHooks = {
     get detailOpen() {
@@ -184,6 +191,15 @@ function buildOverview(actions: ViewActions): ViewHost {
     el,
     tick(nowMs: number) {
       if (mode === "session" && State.focusTask?.provider !== "codex") ticker.tick(nowMs);
+      const focused = State.focusTask;
+      if (mode === "session" && focused?.provider === "codex" && focused.taskStartedAt != null) {
+        const elapsed = taskElapsedMs(focused);
+        const second = Math.floor((elapsed ?? 0) / 1000);
+        if (second !== lastTimerSecond) {
+          lastTimerSecond = second;
+          taskTimer.textContent = formatTaskDuration(elapsed);
+        }
+      }
     },
     sync() {
       const task = State.focusTask;
@@ -220,6 +236,25 @@ function buildOverview(actions: ViewActions): ViewHost {
         clear(projectName);
         projectName.title = task.name;
         projectName.append(dot(task.color, 7), h("span", { class: "session-name-text", text: task.name, title: task.name }));
+        taskTitle.textContent = task.taskTitle;
+        taskTitle.title = task.taskTitle;
+        taskTitle.style.display = task.taskTitle ? "" : "none";
+        const elapsed = taskElapsedMs(task);
+        taskTimer.textContent = formatTaskDuration(elapsed);
+        taskTimer.style.display = task.taskStartedAt == null ? "none" : "";
+        lastTimerSecond = elapsed == null ? -1 : Math.floor(elapsed / 1000);
+        const usage = State.codexUsage;
+        const usageBits: string[] = [];
+        if (usage?.available) {
+          if (usage.primary) usageBits.push(`5h ${displayPercent(usage.primary.remainingPercent)}%`);
+          if (usage.secondary) usageBits.push(`Week ${displayPercent(usage.secondary.remainingPercent)}%`);
+          usageSummary.title = [
+            usage.primary ? `5h ${displayPercent(usage.primary.remainingPercent)}% left · ${formatResetTime(usage.primary.resetsAt)}` : "",
+            usage.secondary ? `Week ${displayPercent(usage.secondary.remainingPercent)}% left · ${formatResetTime(usage.secondary.resetsAt)}` : "",
+          ].filter(Boolean).join("\n");
+        }
+        usageSummary.textContent = usageBits.join(" · ");
+        usageSummary.style.display = usageBits.length ? "" : "none";
         clear(who);
         who.append(h("span", { class: "provider-name", text: providerLabel(task) }));
         sessionState.textContent = task.state === "approval" ? "Needs approval"
@@ -276,7 +311,7 @@ function buildOverview(actions: ViewActions): ViewHost {
       el.classList.toggle("single-other-session", others.length === 1);
       rightColumn.style.display = others.length === 0 ? "none" : "";
       const nextOrder = others.map((t) => t.id).join("|");
-      const pillKey = others.map((t) => `${t.id}:${t.name}:${t.state}:${t.pillBadge ?? ""}:${t.completedPlanCount}:${t.totalPlanCount}:${t.semanticStatus}`).join("|");
+      const pillKey = others.map((t) => `${t.id}:${t.name}:${t.state}:${t.pillBadge ?? ""}:${t.completedPlanCount}:${t.totalPlanCount}:${t.currentStatus}:${t.taskTitle}`).join("|");
       if (pillKey !== pillIds) {
         pillIds = pillKey;
         clear(pills);
@@ -342,7 +377,7 @@ function syncCodexProgress(task: AgentTask, parent: HTMLElement, nodes: Progress
       parent.append(nodes.semanticRow);
     }
     nodes.semanticDot!.className = `semantic-dot ${task.state}`;
-    nodes.semanticText!.textContent = task.semanticStatus || "Working on the task";
+    nodes.semanticText!.textContent = task.currentStatus || (task.state === "finished" ? "Task finished" : "Reviewing project context");
     return;
   }
 
@@ -410,9 +445,10 @@ function pillProgressLabel(task: AgentTask): string {
     : task.state === "ratelimit" ? "Rate limited"
     : "Connected";
   if (task.state === "approval") return state;
-  if (task.hasStructuredPlan && task.totalPlanCount) return `${task.completedPlanCount}/${task.totalPlanCount} · ${state}`;
-  return task.semanticStatus && !["Connected", "Plan complete"].includes(task.semanticStatus)
-    ? task.semanticStatus : state;
+  if (task.hasStructuredPlan && task.totalPlanCount) return `${task.completedPlanCount}/${task.totalPlanCount} · ${formatTaskDuration(taskElapsedMs(task)) || state}`;
+  const semantic = task.currentStatus && !["Connected", "Plan complete"].includes(task.currentStatus)
+    ? task.currentStatus : state;
+  return [semantic, formatTaskDuration(taskElapsedMs(task))].filter(Boolean).join(" · ");
 }
 
 // ── Empty ─────────────────────────────────────────────────────────────────────

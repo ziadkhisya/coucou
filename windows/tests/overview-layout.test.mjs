@@ -13,12 +13,13 @@ const { overviewHeight, islandSize } = await import(
 test("Codex overview grows with plan detail and keeps one-step fallback compact", () => {
   assert.equal(overviewHeight(0, 0, 0), 148);
   assert.ok(overviewHeight(0, 0, 0) < overviewHeight(5, 0, 0));
-  assert.equal(overviewHeight(5, 0, 0), 204);
-  assert.equal(islandSize("expanded", "overview", 0, overviewHeight(5, 0, 0)).h, 204);
+  assert.equal(overviewHeight(5, 0, 0), 198);
+  assert.equal(overviewHeight(5, 0, 0, true), 216);
+  assert.equal(islandSize("expanded", "overview", 0, overviewHeight(5, 0, 0)).h, 198);
 });
 
 test("finished plans retain a bounded note and the other-session rail fits or scrolls", () => {
-  assert.equal(overviewHeight(5, 2, 0), 219);
+  assert.equal(overviewHeight(5, 2, 0), 213);
   assert.equal(overviewHeight(0, 0, 1), 148);
   assert.ok(overviewHeight(0, 0, 5) > overviewHeight(0, 0, 1));
   assert.ok(overviewHeight(0, 0, 20) <= 264);

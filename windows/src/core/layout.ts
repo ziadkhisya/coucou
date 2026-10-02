@@ -90,12 +90,12 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
 };
 
 /** Overview grows only enough to show its checklist and the other-session rail. */
-export function overviewHeight(planRows: number, finishedPendingRows: number, otherSessions: number): number {
+export function overviewHeight(planRows: number, finishedPendingRows: number, otherSessions: number, hasTaskMeta = false): number {
   const visiblePlanRows = Math.min(6, Math.max(0, planRows));
   const checklistRows = visiblePlanRows > 0 ? visiblePlanRows : 1;
   const completionNote = finishedPendingRows > 0 ? 15 : 0;
-  // Header, card padding and title/meta take 114px; each checklist row is 18px.
-  const mainHeight = Math.max(148, 114 + checklistRows * 18 + completionNote);
+  // Header, card padding, project/status and semantic row; task title/usage add one line.
+  const mainHeight = Math.max(148, 108 + (hasTaskMeta ? 18 : 0) + checklistRows * 18 + completionNote);
   // The rail uses 38px session items with a 4px gap; cap it and let its list scroll.
   const railHeight = otherSessions > 0 ? 78 + Math.min(otherSessions, 4) * 42 : 0;
   return Math.min(264, Math.max(mainHeight, railHeight));

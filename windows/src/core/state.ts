@@ -28,8 +28,11 @@ export interface AgentTask {
   hasStructuredPlan: boolean;
   completedPlanCount: number;
   totalPlanCount: number;
-  semanticStatus: string;
+  taskTitle: string;
+  currentStatus: string;
   lastSemanticMessage: string;
+  taskStartedAt: number | null;
+  taskFinishedAt: number | null;
   source: AgentSource;
   isIntegration: boolean;
   /** Provider/session identity for dynamically-created coding sessions. */
@@ -76,7 +79,7 @@ export interface SearchResult {
 const task = (
   id: string, name: string, color: string, source: AgentSource,
 ): AgentTask => ({
-  id, name, color, state: "idle", stepIndex: 0, stepRevision: 0, activityOrder: 0, steps: [], planSteps: [], hasStructuredPlan: false, completedPlanCount: 0, totalPlanCount: 0, semanticStatus: "Connected", lastSemanticMessage: "", source, isIntegration: true, pillBadge: null,
+  id, name, color, state: "idle", stepIndex: 0, stepRevision: 0, activityOrder: 0, steps: [], planSteps: [], hasStructuredPlan: false, completedPlanCount: 0, totalPlanCount: 0, taskTitle: "", currentStatus: "", lastSemanticMessage: "", taskStartedAt: null, taskFinishedAt: null, source, isIntegration: true, pillBadge: null,
 });
 
 /** AgentTask.integrationAgents — same ids, names and colours as macOS. */
@@ -103,6 +106,25 @@ export interface IntegrationInfo {
   error: string | null;
   loaded: boolean;
   configured: boolean;
+}
+
+export interface UsageWindow {
+  usedPercent: number;
+  remainingPercent: number;
+  windowDurationMins: number | null;
+  resetsAt: number | null;
+}
+
+/** Account-level Codex usage snapshot. Raw backend percentages are retained. */
+export interface CodexUsage {
+  available: boolean;
+  limitId?: string;
+  planType?: string | null;
+  primary?: UsageWindow;
+  secondary?: UsageWindow;
+  fetchedAt: number;
+  raw?: unknown;
+  error?: string | null;
 }
 
 export interface Settings {
@@ -172,6 +194,7 @@ class AppState {
   pendingApproval: ApprovalInfo | null = null;
 
   integrations: Record<string, IntegrationInfo> = {};
+  codexUsage: CodexUsage | null = null;
 
   lastActivity = performance.now();
 
@@ -242,6 +265,8 @@ class AppState {
     const t = this.tasks.find((x) => x.id === id);
     if (!t) return;
     t.state = state;
+    if (["finished", "interrupted", "error"].includes(state)) t.taskFinishedAt ??= Date.now();
+    else if (["working", "thinking", "searching", "approval", "question", "ratelimit"].includes(state)) t.taskFinishedAt = null;
     this.touchTask(t);
     this.notify();
   }
@@ -265,8 +290,8 @@ class AppState {
     t.totalPlanCount = planSteps.length;
     t.completedPlanCount = planSteps.filter((step) => step.status === "completed").length;
     const active = planSteps.find((step) => step.status === "in_progress");
-    t.semanticStatus = active?.text ?? (t.completedPlanCount === t.totalPlanCount ? "Plan complete" : "Working through plan");
-    t.lastSemanticMessage = t.semanticStatus;
+    t.currentStatus = active?.text ?? (t.completedPlanCount === t.totalPlanCount ? "Plan complete" : t.currentStatus || "Working through plan");
+    t.lastSemanticMessage = t.currentStatus;
     this.touchTask(t);
     this.notify();
   }
@@ -274,9 +299,51 @@ class AppState {
   setSemanticStatus(id: string, status: string) {
     const t = this.tasks.find((x) => x.id === id);
     if (!t || !status) return;
-    t.semanticStatus = status;
+    t.currentStatus = status;
     t.lastSemanticMessage = status;
     this.touchTask(t);
+    this.notify();
+  }
+
+  resetTask(id: string, startedAt = Date.now()) {
+    const t = this.tasks.find((x) => x.id === id);
+    if (!t) return;
+    t.taskStartedAt = startedAt;
+    t.taskFinishedAt = null;
+    t.taskTitle = "";
+    t.hasStructuredPlan = false;
+    t.planSteps = [];
+    t.completedPlanCount = 0;
+    t.totalPlanCount = 0;
+    t.currentStatus = "Reviewing project context";
+    t.lastSemanticMessage = "";
+    this.touchTask(t);
+    this.notify();
+  }
+
+  setTaskTitle(id: string, title: string) {
+    const t = this.tasks.find((x) => x.id === id);
+    const clean = title.trim();
+    if (!t || !clean || t.taskTitle === clean) return;
+    t.taskTitle = clean;
+    this.touchTask(t);
+    this.notify();
+  }
+
+  resetSessionTask(id: string) {
+    const t = this.tasks.find((x) => x.id === id);
+    if (!t) return;
+    t.taskTitle = "";
+    t.taskStartedAt = null;
+    t.taskFinishedAt = null;
+    t.currentStatus = "Starting session";
+    t.lastSemanticMessage = t.currentStatus;
+    this.touchTask(t);
+    this.notify();
+  }
+
+  setCodexUsage(usage: CodexUsage | null) {
+    this.codexUsage = usage;
     this.notify();
   }
 
@@ -304,8 +371,11 @@ class AppState {
         hasStructuredPlan: false,
         completedPlanCount: 0,
         totalPlanCount: 0,
-        semanticStatus: "Connected",
+        taskTitle: "",
+        currentStatus: "Starting session",
         lastSemanticMessage: "",
+        taskStartedAt: null,
+        taskFinishedAt: null,
         source: provider === "codex" ? "codex" : "claudeCode",
         isIntegration: false,
         pillBadge: null,
