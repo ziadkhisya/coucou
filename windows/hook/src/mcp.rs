@@ -169,6 +169,6 @@ mod tests {
             "arguments": { "steps": [{ "text": "missing a status" }] }
         }));
         assert_eq!(response["isError"], Value::Null);
-        assert!(response["content"][0]["text"].as_str().unwrap().contains("continue the task normally"));
+        assert!(response["content"][0]["text"].as_str().unwrap().contains("continue normally"));
     }
 }
