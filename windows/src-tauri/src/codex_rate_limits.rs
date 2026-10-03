@@ -130,7 +130,7 @@ async fn run_session(app: &AppHandle, mut demand: watch::Receiver<UsageDemand>) 
                 if let Some(id) = message.get("id").and_then(Value::as_u64) {
                     if let Some(request_started_at) = requests.remove(&id) {
                         if message.get("error").is_some() {
-                            log::line("Codex rate-limit snapshot request failed".to_string());
+                            log_rate_limit_error(id, request_started_at, received_at, message.get("error"));
                             continue;
                         }
                         if let Some(result) = message.get("result") {
@@ -188,6 +188,29 @@ fn rate_limit_request(id: u64) -> Value {
     json!({"jsonrpc":"2.0","id":id,"method":"account/rateLimits/read","params":{
         "supportsLunaReserve":false,"excludeResetCreditDetails":true
     }})
+}
+
+fn log_rate_limit_error(request_id: u64, request_started_at: u64, received_at: u64, error: Option<&Value>) {
+    let code = error.and_then(|value| value.get("code")).and_then(Value::as_i64);
+    let message = error.and_then(|value| value.get("message")).and_then(Value::as_str).unwrap_or("").to_ascii_lowercase();
+    let category = rate_limit_error_category(&message);
+    log::line(format!("Codex rate-limit snapshot request failed: requestId={request_id}, code={}, category={category}, requestStartedAt={request_started_at}, receivedAt={received_at}", code.map_or_else(|| "unavailable".into(), |value| value.to_string())));
+}
+
+fn rate_limit_error_category(message: &str) -> &'static str {
+    if ["unauthorized", "authentication", "not authenticated", "sign in"].iter().any(|needle| message.contains(needle)) {
+        "authentication"
+    } else if ["rate limit", "quota"].iter().any(|needle| message.contains(needle)) {
+        "rate_limit"
+    } else if ["method not found", "unsupported", "not implemented"].iter().any(|needle| message.contains(needle)) {
+        "unsupported"
+    } else if ["timeout", "timed out"].iter().any(|needle| message.contains(needle)) {
+        "timeout"
+    } else if ["network", "connection", "socket"].iter().any(|needle| message.contains(needle)) {
+        "connection"
+    } else {
+        "other"
+    }
 }
 
 fn poll_interval(demand: UsageDemand, last_notification: Option<Instant>) -> Duration {
@@ -250,5 +273,19 @@ fn log_usage_if_changed(source: &str, value: &Value, request_id: Option<u64>, re
         request_id.map_or_else(|| "notification".into(), |id| id.to_string()),
         request_started_at.map_or_else(|| "—".into(), |at| at.to_string()),
         emitted_at.map_or_else(|| "—".into(), Value::to_string)));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rate_limit_error_category;
+
+    #[test]
+    fn classifies_rate_limit_read_errors_without_logging_raw_messages() {
+        assert_eq!(rate_limit_error_category("account rate limit read was rejected"), "rate_limit");
+        assert_eq!(rate_limit_error_category("method not found"), "unsupported");
+        assert_eq!(rate_limit_error_category("not authenticated"), "authentication");
+        assert_eq!(rate_limit_error_category("connection timed out"), "timeout");
+        assert_eq!(rate_limit_error_category("unexpected failure"), "other");
     }
 }

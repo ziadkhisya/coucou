@@ -131,7 +131,6 @@ async function main() {
   };
   State.subscribe(syncUsageDemand);
   syncUsageDemand();
-  void Bridge.refreshCodexUsage();
 
   if (!boot?.autoStarted) island.launch();
 
