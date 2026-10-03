@@ -56,7 +56,7 @@ async function main() {
 
   await onEvent<null>("screen-changed", () => void Bridge.reposition());
   await onEvent<null>("outside-click", () => island.dismissOutside());
-  await onEvent<{ kind?: string; payload?: unknown; receivedAt?: number; requestStartedAt?: number | null; emittedAt?: number | null }>("codex-rate-limits", (event) => {
+  await onEvent<{ kind?: string; payload?: unknown; requestId?: number; receivedAt?: number; requestStartedAt?: number | null; emittedAt?: number | null }>("codex-rate-limits", (event) => {
     const receivedAt = event.receivedAt ?? Date.now();
     if (event.kind === "unavailable") {
       State.setCodexUsage(markUsageUnavailable(State.codexUsage, receivedAt));
@@ -68,15 +68,25 @@ async function main() {
       requestStartedAt: event.requestStartedAt ?? null,
       emittedAt: event.emittedAt ?? null,
     };
+    const prior = State.codexUsage;
+    const parsed = parseCodexUsage(event.payload, receivedAt, meta);
     const next = event.kind === "updated"
       ? mergeCodexUsage(State.codexUsage, event.payload, receivedAt, meta)
-      : mergeCodexUsage(State.codexUsage, event.payload, receivedAt, meta) ?? parseCodexUsage(event.payload, receivedAt, meta);
+      : mergeCodexUsage(State.codexUsage, event.payload, receivedAt, meta) ?? parsed;
+    if (event.kind === "snapshot" && parsed === null) {
+      void Bridge.log(`Codex usage snapshot ignored as malformed: requestId=${event.requestId ?? "?"}, requestStartedAt=${event.requestStartedAt ?? "—"}, receivedAt=${receivedAt}, emittedAt=${event.emittedAt ?? "—"}`);
+      return;
+    }
     if (next) {
-      const prior = State.codexUsage;
-      State.setCodexUsage(next);
+      const staleSnapshot = event.kind === "snapshot" && parsed !== null && next === prior;
+      if (staleSnapshot) {
+        void Bridge.log(`Codex usage snapshot ignored as stale: requestId=${event.requestId ?? "?"}, requestStartedAt=${event.requestStartedAt ?? "—"}, receivedAt=${receivedAt}, emittedAt=${event.emittedAt ?? "—"}, newestFullReadAt=${prior?.lastFullReadAt ?? "—"}, newestRollingUpdateAt=${prior?.lastRollingUpdateAt ?? "—"}`);
+        return;
+      }
+      if (next !== prior) State.setCodexUsage(next);
       const changed = prior?.fiveHour?.usedPercent !== next.fiveHour?.usedPercent || prior?.weekly?.usedPercent !== next.weekly?.usedPercent;
-      if (changed || event.kind === "unavailable") {
-        const detail = `Codex usage ${event.kind ?? "snapshot"}: 5h ${next.fiveHour?.usedPercent ?? "—"} used/${next.fiveHour?.windowDurationMins ?? "?"}m, week ${next.weekly?.usedPercent ?? "—"} used/${next.weekly?.windowDurationMins ?? "?"}m, source ${next.source ?? "?"}, received ${new Date(receivedAt).toISOString()}`;
+      if (changed || event.kind === "unavailable" || event.kind === "snapshot") {
+        const detail = `Codex usage ${event.kind ?? "snapshot"}: 5h ${next.fiveHour?.usedPercent ?? "—"} used/${next.fiveHour?.windowDurationMins ?? "?"}m, week ${next.weekly?.usedPercent ?? "—"} used/${next.weekly?.windowDurationMins ?? "?"}m, source ${next.source ?? "?"}, requestId ${event.requestId ?? "—"}, started ${event.requestStartedAt == null ? "—" : new Date(event.requestStartedAt).toISOString()}, received ${new Date(receivedAt).toISOString()}, emittedAt ${event.emittedAt == null ? "—" : new Date(event.emittedAt).toISOString()}`;
         void Bridge.log(detail);
       }
     }

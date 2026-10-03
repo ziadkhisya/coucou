@@ -9,7 +9,8 @@ export function normalizePlanStepText(value: string): string {
   for (let i = 0; i < 3; i++) {
     const next = text
       .replace(/^\s*(?:\[(?:✓|✔|x|X| )\]|[✓✔●○])\s*/, "")
-      .replace(/^\s*(?:completed|complete|currently|current|pending|upcoming)\s*:\s*/i, "")
+      .replace(/^\s*(?:completed|complete|currently|current|pending|upcoming|in[- ]progress)\s*(?::|[-–—])?\s*/i, "")
+      .replace(/^\s*currently\s+/i, "")
       .replace(/^\s*step\s+\d+\s*[:.)-]\s*/i, "")
       .trim();
     if (next === text) break;

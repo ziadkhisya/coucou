@@ -278,8 +278,8 @@ function buildOverview(actions: ViewActions): ViewHost {
         };
         setWindow(usageFiveHour, "5h", five);
         setWindow(usageWeekly, "Week", week);
-        usageDivider.style.display = usage?.available ? "" : "none";
-        usageWeekly.style.display = usage?.available ? "" : "none";
+        usageDivider.style.display = "";
+        usageWeekly.style.display = "";
         usageFreshnessLabel.textContent = freshness === "unavailable" ? "Usage unavailable"
           : freshness === "stale" ? `Updated ${formatUsageAge(usageNow - (usage?.fetchedAt ?? usageNow))} ago` : "";
         usageFreshnessLabel.className = `usage-freshness ${freshness}`;

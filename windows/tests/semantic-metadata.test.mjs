@@ -44,7 +44,7 @@ test("metadata-only progress parses without requiring a checklist", () => {
   });
 });
 
-test("plan labels drop redundant status markers but retain natural wording", () => {
+test("plan labels drop redundant status markers and prefixes", () => {
   const parsed = planParser.parseUpdatePlan({ steps: [
     { text: "Completed: Step 1: inspect usage source", status: "completed" },
     { text: "Currently: fix refresh behavior", status: "in_progress" },
@@ -52,8 +52,9 @@ test("plan labels drop redundant status markers but retain natural wording", () 
     { text: "Currently tracing drift", status: "pending" },
   ] });
   assert.deepEqual(parsed.map((step) => step.text), [
-    "inspect usage source", "fix refresh behavior", "validate live values", "Currently tracing drift",
+    "inspect usage source", "fix refresh behavior", "validate live values", "tracing drift",
   ]);
+  assert.equal(planParser.normalizePlanStepText("In progress — validate the installed build"), "validate the installed build");
 });
 
 test("task clock resets on new task, freezes at finish, and formats both ranges", () => {
@@ -150,6 +151,7 @@ test("an older full read cannot overwrite a newer rolling update", () => {
     primary: { usedPercent: 22, windowDurationMins: 300 },
     secondary: { usedPercent: 99, windowDurationMins: 10080 },
   } }, 260, { source: "snapshot", requestStartedAt: 180 });
+  assert.equal(stale, current, "ignored snapshots preserve identity so UI diagnostics can recognize the stale response");
   assert.equal(stale.fiveHour.usedPercent, 25);
   assert.equal(stale.lastRollingUpdateAt, 240);
 });

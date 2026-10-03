@@ -134,11 +134,12 @@ async fn run_session(app: &AppHandle, mut demand: watch::Receiver<UsageDemand>) 
                             continue;
                         }
                         if let Some(result) = message.get("result") {
-                            log_usage_if_changed("snapshot", result, received_at, &mut last_logged);
+                            let emitted_at = find_emitted_at(result);
+                            log_usage_if_changed("snapshot", result, Some(id), Some(request_started_at), received_at, emitted_at.as_ref(), &mut last_logged);
                             let _ = app.emit("codex-rate-limits", json!({
                                 "kind":"snapshot", "payload":result, "requestId":id,
                                 "requestStartedAt":request_started_at, "receivedAt":received_at,
-                                "emittedAt":find_emitted_at(result)
+                                "emittedAt":emitted_at
                             }));
                         }
                     }
@@ -147,7 +148,7 @@ async fn run_session(app: &AppHandle, mut demand: watch::Receiver<UsageDemand>) 
                     let params = message.get("params").cloned().unwrap_or(Value::Null);
                     let emitted_at = find_emitted_at(&params);
                     log::line(format!("Codex rate-limit rolling update received; receivedAt={received_at}; emittedAt={}", emitted_at.as_ref().map_or_else(|| "unavailable".into(), Value::to_string)));
-                    log_usage_if_changed("notification", &params, received_at, &mut last_logged);
+                    log_usage_if_changed("notification", &params, None, None, received_at, emitted_at.as_ref(), &mut last_logged);
                     let _ = app.emit("codex-rate-limits", json!({
                         "kind":"updated", "payload":params, "receivedAt":received_at,
                         "emittedAt":emitted_at
@@ -225,9 +226,9 @@ fn usage_summary(value: &Value) -> (Option<u64>, Option<u64>) {
     (used(300), used(10_080))
 }
 
-fn log_usage_if_changed(source: &str, value: &Value, received_at: u64, last: &mut (Option<u64>, Option<u64>)) {
+fn log_usage_if_changed(source: &str, value: &Value, request_id: Option<u64>, request_started_at: Option<u64>, received_at: u64, emitted_at: Option<&Value>, last: &mut (Option<u64>, Option<u64>)) {
     let (five, week) = usage_summary(value);
-    if (five, week) == *last { return; }
+    let changed = (five, week) != *last;
     *last = (five, week);
     let root = value.get("result").unwrap_or(value);
     let limits = root.get("rateLimitsByLimitId").and_then(|limits| limits.get("codex"))
@@ -239,7 +240,15 @@ fn log_usage_if_changed(source: &str, value: &Value, received_at: u64, last: &mu
         .unwrap_or(fallback);
     let five_duration = duration(300, 300);
     let week_duration = duration(10_080, 10_080);
-    log::line(format!("Codex usage {source}: 5h used={} duration={}m; week used={} duration={}m; receivedAt={received_at}",
+    // Every full read is logged with request provenance, even when its values are
+    // unchanged. The sanitized fields let us distinguish stale/in-flight reads
+    // from window mapping errors without persisting account identifiers/payloads.
+    if changed || source == "snapshot" {
+        log::line(format!("Codex usage {source}: 5h used={} duration={}m; week used={} duration={}m; requestId={}; requestStartedAt={}; receivedAt={received_at}; emittedAt={}",
         five.map_or_else(|| "—".into(), |n| format!("{n}%")), five_duration,
-        week.map_or_else(|| "—".into(), |n| format!("{n}%")), week_duration));
+        week.map_or_else(|| "—".into(), |n| format!("{n}%")), week_duration,
+        request_id.map_or_else(|| "notification".into(), |id| id.to_string()),
+        request_started_at.map_or_else(|| "—".into(), |at| at.to_string()),
+        emitted_at.map_or_else(|| "—".into(), Value::to_string)));
+    }
 }
