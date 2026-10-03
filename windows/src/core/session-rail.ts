@@ -1,8 +1,9 @@
 import type { AgentTask } from "./state";
-import { formatTaskDuration, taskElapsedMs } from "./timer";
+import { compactTaskTitle, formatTaskDuration, taskElapsedMs } from "./timer";
 
 export interface SessionRailContent {
   status: string;
+  taskTitle: string;
   timer: string;
   title: string;
 }
@@ -24,5 +25,6 @@ export function sessionRailContent(task: AgentTask, now?: number): SessionRailCo
     : task.hasStructuredPlan && task.totalPlanCount
       ? `${task.completedPlanCount}/${task.totalPlanCount} · ${task.state === "finished" || task.state === "error" ? state : task.currentStatus || state}`
       : task.currentStatus && !["Connected", "Plan complete"].includes(task.currentStatus) ? task.currentStatus : state;
-  return { status: semantic, timer, title: [task.name, semantic, timer].filter(Boolean).join(" · ") };
+  const taskTitle = compactTaskTitle(task.taskTitle);
+  return { status: semantic, taskTitle, timer, title: [task.name, taskTitle, semantic, timer].filter(Boolean).join(" · ") };
 }

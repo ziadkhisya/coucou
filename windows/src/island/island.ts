@@ -46,7 +46,7 @@ export class Island {
   private greetingCanvas!: HTMLCanvasElement;
   private miniGrid!: HTMLElement;
   private compactProgress!: HTMLElement;
-  private compactProject!: HTMLElement;
+  private compactTaskTitle!: HTMLElement;
   private compactStatus!: HTMLElement;
   private compactTimer!: HTMLElement;
   private countdown!: HTMLElement;
@@ -188,11 +188,11 @@ export class Island {
     this.botCanvas = h("canvas", { id: "bot-canvas" });
     this.greetingCanvas = h("canvas", { id: "greeting-canvas" });
     this.miniGrid = h("div", { id: "mini-grid" });
-    this.compactProject = h("span", { class: "compact-task-title" });
+    this.compactTaskTitle = h("span", { class: "compact-task-title" });
     this.compactStatus = h("span", { class: "compact-status" });
     this.compactTimer = h("span", { class: "compact-timer" });
     this.compactProgress = h("div", { id: "compact-progress", "aria-live": "polite" },
-      this.compactProject,
+      this.compactTaskTitle,
       h("span", { class: "compact-separator", text: "·" }),
       this.compactStatus,
       h("span", { class: "compact-separator compact-timer-separator", text: "·" }),
@@ -801,10 +801,14 @@ export class Island {
     const clock = now ?? previewClock ?? Date.now();
     const showGrid = State.mode === "compact";
     const focused = State.focusTask;
-    const showProgress = showGrid && focused?.provider === "codex" && !focused.isIntegration;
-    this.miniGrid.style.opacity = showGrid && !showProgress ? "1" : "0";
+    const hasCodexProgress = focused?.provider === "codex" && !focused.isIntegration;
+    const showProgress = showGrid && hasCodexProgress;
+    this.miniGrid.style.opacity = showGrid && !hasCodexProgress ? "1" : "0";
     this.compactProgress.style.opacity = showProgress ? "1" : "0";
-    if (!showProgress || !focused) return;
+    // Keep the compact projection current even while expanded. Focus/task changes
+    // can happen before the next collapse, and the compact HUD must never expose
+    // a stale session title during that transition.
+    if (!hasCodexProgress || !focused) return;
 
     const elapsed = formatTaskDuration(taskElapsedMs(focused, clock));
     const progress = focused.hasStructuredPlan && focused.totalPlanCount
@@ -812,11 +816,11 @@ export class Island {
       : focused.state === "finished" ? "Finished" : focused.currentStatus || "Starting task";
     const title = compactTaskTitle(focused.taskTitle);
     const label = `${focused.name} · ${title} · ${progress} · ${elapsed}`;
-    if (this.compactProject.textContent !== title) this.compactProject.textContent = title;
+    if (this.compactTaskTitle.textContent !== title) this.compactTaskTitle.textContent = title;
     if (this.compactStatus.textContent !== progress) this.compactStatus.textContent = progress;
     if (this.compactTimer.textContent !== elapsed) this.compactTimer.textContent = elapsed;
     this.compactProgress.title = label;
-    this.compactProgress.setAttribute("aria-label", `${title}, ${progress}, ${elapsed}`.trim());
+    this.compactProgress.setAttribute("aria-label", `${focused.name} project, ${title} task, ${progress}, ${elapsed}`.trim());
   }
 
   private updateBotTargets() {

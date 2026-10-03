@@ -376,7 +376,10 @@ function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {
         h("span", { class: "session-pill-name", text: task.name, title: task.name }),
         h("span", { class: "session-pill-timer", text: summary.timer }),
       ),
-      h("span", { class: "session-pill-state", text: summary.status, title: summary.status }),
+      h("span", { class: "session-pill-detail-row" },
+        h("span", { class: "session-pill-task-title", text: summary.taskTitle, title: summary.taskTitle }),
+        h("span", { class: "session-pill-state", text: summary.status, title: summary.status }),
+      ),
     ),
   );
   pill.dataset.taskId = task.id;

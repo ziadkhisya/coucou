@@ -18,8 +18,9 @@ export function formatTaskDuration(elapsedMs: number | null): string {
   const hours = Math.floor(minutes / 60);
   const minutePart = minutes % 60;
   const secondPart = seconds % 60;
-  if (hours > 0) return `${hours}:${String(minutePart).padStart(2, "0")}:${String(secondPart).padStart(2, "0")}`;
-  return `${minutes}:${String(secondPart).padStart(2, "0")}`;
+  if (seconds < 60) return `${seconds}s`;
+  if (hours > 0) return `${hours}h ${String(minutePart).padStart(2, "0")}m`;
+  return `${minutes}m ${secondPart}s`;
 }
 
 /** Compact identity never substitutes the project/provider name for task intent. */

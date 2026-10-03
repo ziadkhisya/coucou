@@ -73,18 +73,23 @@ test("task clock resets on new task, freezes at finish, and formats both ranges"
   State.updateTask(id, "finished");
   const finishedAt = State.tasks[0].taskFinishedAt;
   assert.equal(timers.taskElapsedMs(State.tasks[0], finishedAt + 50_000), finishedAt - 10_000);
-  assert.equal(timers.formatTaskDuration(1_122_000), "18:42");
-  assert.equal(timers.formatTaskDuration(4_053_000), "1:07:33");
+  assert.equal(timers.formatTaskDuration(1_122_000), "18m 42s");
+  assert.equal(timers.formatTaskDuration(4_053_000), "1h 07m");
+  assert.equal(timers.formatTaskDuration(42_000), "42s");
+  assert.equal(timers.formatTaskDuration(165_000), "2m 45s");
+  assert.equal(timers.formatTaskDuration(4_933_000), "1h 22m");
+  assert.equal(timers.formatTaskDuration(7_620_000), "2h 07m");
   State.setFocus("integration_codex");
   assert.equal(timers.taskElapsedMs(State.tasks.find((task) => task.id === id), finishedAt + 90_000), finishedAt - 10_000);
   State.resetTask(id, 20_000);
   assert.equal(State.tasks.find((task) => task.id === id).taskStartedAt, 20_000);
-  assert.equal(timers.formatTaskDuration(5_000), "0:05");
-  assert.equal(timers.formatTaskDuration(65_000), "1:05");
-  assert.equal(timers.formatTaskDuration(0), "0:00");
-  assert.equal(timers.formatTaskDuration(3_667_000), "1:01:07");
+  assert.equal(timers.formatTaskDuration(5_000), "5s");
+  assert.equal(timers.formatTaskDuration(65_000), "1m 5s");
+  assert.equal(timers.formatTaskDuration(0), "0s");
+  assert.equal(timers.formatTaskDuration(3_667_000), "1h 01m");
   assert.equal(timers.compactTaskTitle("Codex"), "Starting task");
   assert.equal(timers.compactTaskTitle(""), "Starting task");
+  assert.equal(timers.compactTaskTitle("Find winning products"), "Find winning products");
   assert.equal(timers.compactTaskTitle("Fix product importer"), "Fix product importer");
   const planBefore = State.tasks.find((task) => task.id === id).taskStartedAt;
   State.setPlan(id, [{ text: "Run validation", status: "in_progress" }]);
@@ -242,10 +247,27 @@ test("session rail keeps the timer separate from semantic progress and truncatab
     provider: "codex", sessionId: "rail-session",
   };
   const content = rail.sessionRailContent(task, 1_122_000);
-  assert.equal(content.timer, "18:42");
+  assert.equal(content.timer, "18m 42s");
   assert.match(content.status, /^2\/5 · Comparing/);
-  assert.doesNotMatch(content.status, /18:42|PowerShell|command/i);
+  assert.equal(content.taskTitle, "Check live rate limits");
+  assert.doesNotMatch(content.status, /PowerShell|command/i);
   assert.match(content.title, /Research workspace/);
+  assert.match(content.title, /Check live rate limits/);
+});
+
+test("same-project rail sessions expose independent task titles", () => {
+  const base = {
+    name: "DropshiFlow", color: "#35A67A", state: "working",
+    stepIndex: 0, stepRevision: 0, activityOrder: 0, steps: [], planSteps: [], hasStructuredPlan: false,
+    completedPlanCount: 0, totalPlanCount: 0, currentStatus: "Working", lastSemanticMessage: "",
+    taskStartedAt: 0, taskFinishedAt: null, source: "codex", isIntegration: false,
+    provider: "codex", sessionId: "same-project",
+  };
+  const first = rail.sessionRailContent({ ...base, id: "one", taskTitle: "Find winning products" }, 5_000);
+  const second = rail.sessionRailContent({ ...base, id: "two", taskTitle: "Fix product importer" }, 5_000);
+  assert.equal(first.taskTitle, "Find winning products");
+  assert.equal(second.taskTitle, "Fix product importer");
+  assert.notEqual(first.taskTitle, second.taskTitle);
 });
 
 test("session rail titles use the deterministic preview clock", () => {
@@ -258,7 +280,7 @@ test("session rail titles use the deterministic preview clock", () => {
     provider: "codex", sessionId: "rail-clock-session",
   };
   const content = rail.sessionRailContent(task);
-  assert.equal(content.timer, "18:42");
-  assert.equal(content.title, "Coucou · Updating progress · 18:42");
+  assert.equal(content.timer, "18m 42s");
+  assert.equal(content.title, "Coucou · Fix timer summary · Updating progress · 18m 42s");
   delete globalThis.__COUCOU_PREVIEW_NOW;
 });

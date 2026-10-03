@@ -198,8 +198,8 @@ body {
 
 .compact-status {
   min-width: 0;
-  flex: 0 1 28%;
-  max-width: 28%;
+  flex: 0 1 23%;
+  max-width: 23%;
   overflow: hidden;
   color: #a9c3b4;
   text-overflow: ellipsis;
@@ -837,6 +837,7 @@ body {
 }
 
 .session-pill-name,
+.session-pill-task-title,
 .session-pill-state {
   white-space: nowrap;
   overflow: hidden;
@@ -857,9 +858,26 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.session-pill-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.session-pill-task-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #d9dedb;
+  font: 550 9px/1.15 var(--font);
+}
+
 .session-pill-state {
+  flex: 0 1 37%;
+  max-width: 37%;
   color: var(--dim-3);
-  font: 450 9px/1.15 var(--font);
+  font: 450 8px/1.15 var(--font);
+  text-align: right;
 }
 
 .session-pill:hover {

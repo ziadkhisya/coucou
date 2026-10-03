@@ -54,12 +54,13 @@ const defaultPlan = [
 ];
 let updateTimer: number | undefined;
 
-const previewStates = new Set(["five", "one", "usage", "low", "mixed", "stale", "unavailable", "overhour", "longtitle", "long", "longplan", "taskchange", "newtask", "finished", "two", "many", "rail", "update", "approval", "longpermission", "collapsedactive", "collapsedplan"]);
+const previewStates = new Set(["five", "one", "usage", "low", "mixed", "stale", "unavailable", "overhour", "longtitle", "long", "longplan", "taskchange", "newtask", "sameproject", "finished", "two", "many", "rail", "update", "approval", "longpermission", "collapsedactive", "collapsedplan"]);
 
 function show(kind: string, writeHistory = true) {
   if (!previewStates.has(kind)) kind = "five";
   if (writeHistory) history.pushState({ coucouPreview: kind }, "", `?state=${encodeURIComponent(kind)}`);
   const active = kind === "two" ? [session(0), session(1)]
+    : kind === "sameproject" ? [session(0, "DropshiFlow"), session(1, "DropshiFlow")]
     : kind === "many" ? [session(0), session(1), session(2), session(3)]
     : kind === "rail" ? [session(0), session(1, longName), session(2, "Build and validation workspace", "thinking"), session(3, "Design system", "finished"), session(4, "Release validation", "working"), session(5, "Long-running docs and packaging check", "thinking")]
     : kind === "long" ? [session(0, longName)]
@@ -102,6 +103,12 @@ function show(kind: string, writeHistory = true) {
     active[0].name = "Coucou";
     active[0].currentStatus = "Reviewing rail spacing";
     active[0].taskStartedAt = previewNow - 5_000;
+  }
+  if (kind === "sameproject") {
+    active[0].taskTitle = "Find winning products";
+    active[0].currentStatus = "Researching products";
+    active[1].taskTitle = "Fix product importer";
+    active[1].currentStatus = "Updating importer";
   }
   if (kind === "longplan") active[0].taskTitle = "Improve plan event handling and task progress across sessions";
   if (kind === "overhour") active[0].taskStartedAt = previewNow - 4_053_000;
