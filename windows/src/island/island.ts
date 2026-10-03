@@ -11,7 +11,7 @@ import {
 } from "../core/layout";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
-import { formatTaskDuration, taskElapsedMs } from "../core/timer";
+import { compactTaskTitle, formatTaskDuration, taskElapsedMs } from "../core/timer";
 import { BotEngine, hexToRGB } from "../mochi/engine";
 import { Greeting } from "../mochi/greeting";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
@@ -70,6 +70,7 @@ export class Island {
   private lastFrame = 0;
   private dirty = true;
   private canvasPx = 0;
+  private taskTimerInterval: number | null = null;
 
   // Rust starts the window at full size so the launch greeting has room.
   private collapsed = false;
@@ -103,6 +104,7 @@ export class Island {
     this.greeting.onComplete = () => this.fsm.greetComplete();
     State.subscribe(() => {
       this.dirty = true;
+      this.syncTaskTimerScheduler();
       if (State.mode === "expanded" && State.view === "overview") {
         const target = this.currentOverviewHeight();
         if (target !== this.overviewHeightTarget) this.animateGeometry(target < this.height.value);
@@ -186,7 +188,7 @@ export class Island {
     this.botCanvas = h("canvas", { id: "bot-canvas" });
     this.greetingCanvas = h("canvas", { id: "greeting-canvas" });
     this.miniGrid = h("div", { id: "mini-grid" });
-    this.compactProject = h("span", { class: "compact-project" });
+    this.compactProject = h("span", { class: "compact-task-title" });
     this.compactStatus = h("span", { class: "compact-status" });
     this.compactTimer = h("span", { class: "compact-timer" });
     this.compactProgress = h("div", { id: "compact-progress", "aria-live": "polite" },
@@ -773,6 +775,50 @@ export class Island {
     }
   };
 
+  /** Timer text has its own low-frequency clock; it must not depend on Mochi's frame loop. */
+  private syncTaskTimerScheduler() {
+    const previewClock = (globalThis as typeof globalThis & { __COUCOU_PREVIEW_NOW?: number }).__COUCOU_PREVIEW_NOW;
+    const visible = State.mode !== "hidden" && State.view === "overview";
+    const activeTimer = State.tasks.some((task) =>
+      task.provider === "codex" && !task.isIntegration &&
+      (task.taskStartedAt != null || task.goalStartedAt != null) &&
+      (task.goalActive || task.taskFinishedAt == null));
+    const shouldRun = previewClock == null && visible && activeTimer;
+    if (shouldRun && this.taskTimerInterval == null) {
+      this.taskTimerInterval = window.setInterval(() => {
+        const now = Date.now();
+        this.views.get("overview")?.tick?.(performance.now());
+        this.syncCompactProgress(now);
+      }, 1000);
+    } else if (!shouldRun && this.taskTimerInterval != null) {
+      window.clearInterval(this.taskTimerInterval);
+      this.taskTimerInterval = null;
+    }
+  }
+
+  private syncCompactProgress(now?: number) {
+    const previewClock = (globalThis as typeof globalThis & { __COUCOU_PREVIEW_NOW?: number }).__COUCOU_PREVIEW_NOW;
+    const clock = now ?? previewClock ?? Date.now();
+    const showGrid = State.mode === "compact";
+    const focused = State.focusTask;
+    const showProgress = showGrid && focused?.provider === "codex" && !focused.isIntegration;
+    this.miniGrid.style.opacity = showGrid && !showProgress ? "1" : "0";
+    this.compactProgress.style.opacity = showProgress ? "1" : "0";
+    if (!showProgress || !focused) return;
+
+    const elapsed = formatTaskDuration(taskElapsedMs(focused, clock));
+    const progress = focused.hasStructuredPlan && focused.totalPlanCount
+      ? `${focused.completedPlanCount}/${focused.totalPlanCount}`
+      : focused.state === "finished" ? "Finished" : focused.currentStatus || "Starting task";
+    const title = compactTaskTitle(focused.taskTitle);
+    const label = `${focused.name} · ${title} · ${progress} · ${elapsed}`;
+    if (this.compactProject.textContent !== title) this.compactProject.textContent = title;
+    if (this.compactStatus.textContent !== progress) this.compactStatus.textContent = progress;
+    if (this.compactTimer.textContent !== elapsed) this.compactTimer.textContent = elapsed;
+    this.compactProgress.title = label;
+    this.compactProgress.setAttribute("aria-label", `${title}, ${progress}, ${elapsed}`.trim());
+  }
+
   private updateBotTargets() {
     const p = botPosition(State.mode, State.view, this.height.value, State.uploadProgress);
     this.botCx.target = p.cx;
@@ -890,25 +936,11 @@ export class Island {
       }
     }
 
-    // Compact mini grid
+    // Compact progress is synchronized both on state changes and on its 1 Hz timer.
+    this.syncCompactProgress();
     const showGrid = State.mode === "compact";
     const focused = State.focusTask;
     const showProgress = showGrid && focused?.provider === "codex" && !focused.isIntegration;
-    this.miniGrid.style.opacity = showGrid && !showProgress ? "1" : "0";
-    this.compactProgress.style.opacity = showProgress ? "1" : "0";
-    if (showProgress && focused) {
-      const elapsed = formatTaskDuration(taskElapsedMs(focused));
-      const progress = focused.hasStructuredPlan && focused.totalPlanCount
-        ? `${focused.completedPlanCount}/${focused.totalPlanCount}`
-        : focused.state === "finished" ? "Finished" : focused.currentStatus || "Reviewing project files";
-      const compactTitle = focused.taskTitle || focused.name;
-      const compactDetail = progress;
-      const label = `${focused.name} · ${focused.taskTitle} · ${compactDetail} · ${elapsed}`;
-      if (this.compactProject.textContent !== compactTitle) this.compactProject.textContent = compactTitle;
-      if (this.compactStatus.textContent !== compactDetail) this.compactStatus.textContent = compactDetail;
-      if (this.compactTimer.textContent !== elapsed) this.compactTimer.textContent = elapsed;
-      this.compactProgress.title = label;
-    }
     if (showGrid && !showProgress) {
       const others = State.otherTasks.slice(0, 4);
       const key = others.map((t) => t.id).join("|");

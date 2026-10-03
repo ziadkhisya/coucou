@@ -298,6 +298,24 @@ test("a delayed finish timer cannot clear a newer run", () => {
   assert.deepEqual(task.steps, []);
 });
 
+test("a /goal timer and task title survive internal turn completion and continuation", () => {
+  dispatchHook({ provider: "codex", hook_event_name: "UserPromptSubmit", session_id: "goal-lifecycle", turn_id: "goal-turn-1", cwd: "C:/work/coucou", timestamp: "2026-10-03T12:00:00Z", prompt: "/goal Improve the Coucou task HUD" });
+  dispatchHook({ provider: "codex", hook_event_name: "PreToolUse", session_id: "goal-lifecycle", turn_id: "goal-turn-1", tool_name: "mcp__coucou_progress__update_plan", tool_input: { task_title: "Fix goal lifecycle", current_status: "Tracing timer resets" } });
+  const task = sessionTask("codex", "goal-lifecycle");
+  const goalStartedAt = task.goalStartedAt;
+  assert.equal(task.goalActive, true);
+  assert.equal(task.taskTitle, "Fix goal lifecycle");
+
+  dispatchHook({ provider: "codex", hook_event_name: "Stop", session_id: "goal-lifecycle", turn_id: "goal-turn-1", timestamp: "2026-10-03T12:00:30Z" });
+  assert.equal(task.goalStartedAt, goalStartedAt);
+  assert.equal(task.goalActive, true);
+
+  dispatchHook({ provider: "codex", hook_event_name: "UserPromptSubmit", session_id: "goal-lifecycle", turn_id: "goal-turn-2", cwd: "C:/work/coucou", timestamp: "2026-10-03T12:01:00Z", prompt: "Continue the same goal" });
+  assert.equal(task.goalStartedAt, goalStartedAt);
+  assert.equal(task.taskTitle, "Fix goal lifecycle");
+  assert.equal(task.taskStartedAt, Date.parse("2026-10-03T12:01:00Z"));
+});
+
 test("a turnless delayed Stop cannot finish a known newer turn", () => {
   dispatchHook({ provider: "codex", hook_event_name: "UserPromptSubmit", session_id: "turnless-stop", turn_id: "turn-current", cwd: "C:/work/turnless", prompt: "current" });
   dispatchHook({ provider: "codex", hook_event_name: "PreToolUse", session_id: "turnless-stop", turn_id: "turn-current", cwd: "C:/work/turnless", tool_name: "Bash", tool_input: { command: "cargo test" } });

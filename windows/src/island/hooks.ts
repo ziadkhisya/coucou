@@ -242,6 +242,10 @@ function eventTime(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : Date.now();
 }
 
+function startsUserGoal(prompt: unknown): boolean {
+  return typeof prompt === "string" && /^\s*\/goal(?:\s|$)/i.test(prompt);
+}
+
 function semanticToolStatus(tool: string, input: Record<string, unknown>): string {
   const name = tool.toLowerCase();
   const command = typeof input.command === "string" ? input.command.toLowerCase() : "";
@@ -421,12 +425,12 @@ function handleHook(island: Island, payload: HookPayload) {
     case "UserPromptSubmit": {
       // A new turn supersedes any unanswered request from the same session.
       cancelApprovalForSession(island, provider, sessionId);
+      const asked = payload.prompt ?? payload.message;
       if (provider === "codex") {
-        State.resetTask(taskId, eventTime(payload.timestamp));
+        State.resetTask(taskId, eventTime(payload.timestamp), startsUserGoal(asked));
       }
       State.updateTask(taskId, "thinking");
       State.setPillBadge(taskId, null);
-      const asked = payload.prompt ?? payload.message;
       if (provider === "codex") {
         State.setSemanticStatus(taskId, "Reviewing project files");
       } else if (asked) State.appendStep(taskId, asked.slice(0, 60));
@@ -541,6 +545,7 @@ function handleHook(island: Island, payload: HookPayload) {
     case "SessionEnd":
       cancelApprovalForEvent(island, provider, sessionId, payload.turn_id, true);
       if (sessionId) {
+        State.endGoal(taskId, eventTime(payload.timestamp));
         State.removeCodeSession(provider, sessionId);
       } else {
         State.updateTask(taskId, "idle");

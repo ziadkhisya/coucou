@@ -5,7 +5,8 @@ function clockNow(): number {
   return preview ?? Date.now();
 }
 
-export function taskElapsedMs(task: Pick<AgentTask, "taskStartedAt" | "taskFinishedAt">, now = clockNow()): number | null {
+export function taskElapsedMs(task: Pick<AgentTask, "taskStartedAt" | "taskFinishedAt"> & Partial<Pick<AgentTask, "goalStartedAt" | "goalActive">>, now = clockNow()): number | null {
+  if (task.goalActive && task.goalStartedAt != null) return Math.max(0, now - task.goalStartedAt);
   if (task.taskStartedAt == null) return null;
   return Math.max(0, (task.taskFinishedAt ?? now) - task.taskStartedAt);
 }
@@ -14,10 +15,16 @@ export function formatTaskDuration(elapsedMs: number | null): string {
   if (elapsedMs == null) return "";
   const seconds = Math.floor(elapsedMs / 1000);
   const minutes = Math.floor(seconds / 60);
-  const hh = Math.floor(minutes / 60);
-  const mm = minutes % 60;
-  const ss = seconds % 60;
-  return hh > 0
-    ? `${hh}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}`
-    : `${String(minutes).padStart(2, "0")}:${String(ss).padStart(2, "0")}`;
+  const hours = Math.floor(minutes / 60);
+  const minutePart = minutes % 60;
+  const secondPart = seconds % 60;
+  if (hours > 0) return `${hours}h ${String(minutePart).padStart(2, "0")}m`;
+  if (minutes > 0) return `${minutes}m ${secondPart}s`;
+  return `${seconds}s`;
+}
+
+/** Compact identity never substitutes the project/provider name for task intent. */
+export function compactTaskTitle(title: string | null | undefined): string {
+  const clean = title?.trim();
+  return clean && clean.toLowerCase() !== "codex" ? clean : "Starting task";
 }

@@ -3,8 +3,10 @@ import { Island } from "../src/island/island";
 import { State, type AgentTask } from "../src/core/state";
 import { parseUpdatePlan } from "../src/core/plan";
 
-const previewNow = Date.UTC(2026, 9, 2, 12, 0, 0);
-(globalThis as typeof globalThis & { __COUCOU_PREVIEW_NOW?: number }).__COUCOU_PREVIEW_NOW = previewNow;
+const liveTimerPreview = new URLSearchParams(location.search).has("liveTimer");
+const previewNow = liveTimerPreview ? Date.now() : Date.UTC(2026, 9, 2, 12, 0, 0);
+if (liveTimerPreview) delete (globalThis as typeof globalThis & { __COUCOU_PREVIEW_NOW?: number }).__COUCOU_PREVIEW_NOW;
+else (globalThis as typeof globalThis & { __COUCOU_PREVIEW_NOW?: number }).__COUCOU_PREVIEW_NOW = previewNow;
 const island = new Island(document.getElementById("root")!);
 // Keep the gallery state open while inspecting variants; production keeps the normal auto-close delay.
 island.fsm.homeToPetitDelay = 3600;
@@ -193,7 +195,16 @@ function show(kind: string, writeHistory = true) {
 }
 
 document.querySelectorAll<HTMLButtonElement>("#preview-controls button").forEach((button) => {
-  button.addEventListener("click", () => show(button.dataset.state ?? "one"));
+  button.addEventListener("click", () => {
+    if (button.hasAttribute("data-toggle-compact")) {
+      const collapsed = !document.body.classList.contains("preview-collapsed");
+      document.body.classList.toggle("preview-collapsed", collapsed);
+      State.mode = collapsed ? "compact" : "expanded";
+      State.notify();
+      return;
+    }
+    show(button.dataset.state ?? "one");
+  });
 });
 
 window.addEventListener("popstate", () => show(new URLSearchParams(location.search).get("state") ?? "five", false));

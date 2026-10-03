@@ -181,22 +181,25 @@ body {
   transition: opacity 0.2s ease;
 }
 
-.compact-project {
+.compact-task-title {
   min-width: 0;
-  flex: 0 1 46%;
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: #e2e8e4;
+  font-weight: 650;
 }
 
 .compact-separator {
   flex: 0 0 auto;
-  padding: 0 5px;
+  padding: 0 3px;
   color: #68716c;
 }
 
 .compact-status {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 28%;
+  max-width: 28%;
   overflow: hidden;
   color: #a9c3b4;
   text-overflow: ellipsis;

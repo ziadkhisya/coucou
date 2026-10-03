@@ -65,14 +65,19 @@ test("task clock resets on new task, freezes at finish, and formats both ranges"
   State.updateTask(id, "finished");
   const finishedAt = State.tasks[0].taskFinishedAt;
   assert.equal(timers.taskElapsedMs(State.tasks[0], finishedAt + 50_000), finishedAt - 10_000);
-  assert.equal(timers.formatTaskDuration(1_122_000), "18:42");
-  assert.equal(timers.formatTaskDuration(4_053_000), "1:07:33");
+  assert.equal(timers.formatTaskDuration(1_122_000), "18m 42s");
+  assert.equal(timers.formatTaskDuration(4_053_000), "1h 07m");
   State.setFocus("integration_codex");
   assert.equal(timers.taskElapsedMs(State.tasks.find((task) => task.id === id), finishedAt + 90_000), finishedAt - 10_000);
   State.resetTask(id, 20_000);
   assert.equal(State.tasks.find((task) => task.id === id).taskStartedAt, 20_000);
-  assert.equal(timers.formatTaskDuration(5_000), "00:05");
-  assert.equal(timers.formatTaskDuration(65_000), "01:05");
+  assert.equal(timers.formatTaskDuration(5_000), "5s");
+  assert.equal(timers.formatTaskDuration(65_000), "1m 5s");
+  assert.equal(timers.formatTaskDuration(0), "0s");
+  assert.equal(timers.formatTaskDuration(3_667_000), "1h 01m");
+  assert.equal(timers.compactTaskTitle("Codex"), "Starting task");
+  assert.equal(timers.compactTaskTitle(""), "Starting task");
+  assert.equal(timers.compactTaskTitle("Fix product importer"), "Fix product importer");
   const planBefore = State.tasks.find((task) => task.id === id).taskStartedAt;
   State.setPlan(id, [{ text: "Run validation", status: "in_progress" }]);
   assert.equal(State.tasks.find((task) => task.id === id).taskStartedAt, planBefore);
@@ -85,6 +90,44 @@ test("authoritative stop timestamps freeze the task clock", () => {
   State.updateTask(id, "finished", 15_000);
   assert.equal(State.tasks[0].taskFinishedAt, 15_000);
   assert.equal(timers.taskElapsedMs(State.tasks[0], 90_000), 5_000);
+});
+
+test("goal timer survives turn completion, plan replacement, and task continuation", () => {
+  State.tasks = [];
+  const id = State.upsertCodeSession("codex", "goal-timer-session", "DropshiFlow", "C:/work/dropshi");
+  State.resetTask(id, 10_000, true);
+  State.setTaskTitle(id, "Find winning products");
+  State.updateTask(id, "finished", 30_000);
+  const task = State.tasks[0];
+  assert.equal(timers.taskElapsedMs(task, 70_000), 60_000);
+  State.resetTask(id, 80_000);
+  assert.equal(task.goalStartedAt, 10_000);
+  assert.equal(task.taskTitle, "Find winning products");
+  assert.equal(timers.taskElapsedMs(task, 90_000), 80_000);
+  State.setPlan(id, [{ text: "Continue goal work", status: "in_progress" }]);
+  assert.equal(task.goalStartedAt, 10_000);
+  State.endGoal(id, 100_000);
+  assert.equal(timers.taskElapsedMs(task, 200_000), 90_000);
+});
+
+test("goal timer metadata rehydrates by provider and session id", () => {
+  const values = new Map();
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) },
+  });
+  State.tasks = [];
+  const id = State.upsertCodeSession("codex", "rehydrate-goal", "Coucou", "C:/work/coucou");
+  State.resetTask(id, 123_000, true);
+  State.setTaskTitle(id, "Fix goal lifecycle");
+  State.tasks = [];
+  const restoredId = State.upsertCodeSession("codex", "rehydrate-goal", "Coucou", "C:/work/coucou");
+  const restored = State.tasks.find((task) => task.id === restoredId);
+  assert.equal(restored.goalActive, true);
+  assert.equal(restored.goalStartedAt, 123_000);
+  assert.equal(restored.taskTitle, "Fix goal lifecycle");
+  assert.equal(timers.taskElapsedMs(restored, 183_000), 60_000);
+  delete globalThis.localStorage;
 });
 
 test("error and stop states freeze task duration too", () => {
@@ -188,9 +231,9 @@ test("session rail keeps the timer separate from semantic progress and truncatab
     provider: "codex", sessionId: "rail-session",
   };
   const content = rail.sessionRailContent(task, 1_122_000);
-  assert.equal(content.timer, "18:42");
+  assert.equal(content.timer, "18m 42s");
   assert.match(content.status, /^2\/5 · Comparing/);
-  assert.doesNotMatch(content.status, /18:42|PowerShell|command/i);
+  assert.doesNotMatch(content.status, /18m 42s|PowerShell|command/i);
   assert.match(content.title, /Research workspace/);
 });
 
@@ -204,7 +247,7 @@ test("session rail titles use the deterministic preview clock", () => {
     provider: "codex", sessionId: "rail-clock-session",
   };
   const content = rail.sessionRailContent(task);
-  assert.equal(content.timer, "18:42");
-  assert.equal(content.title, "Coucou · Updating progress · 18:42");
+  assert.equal(content.timer, "18m 42s");
+  assert.equal(content.title, "Coucou · Updating progress · 18m 42s");
   delete globalThis.__COUCOU_PREVIEW_NOW;
 });

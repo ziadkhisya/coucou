@@ -11,7 +11,7 @@ import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
 import { buildPrompt } from "./chat";
 import { buildChoose, buildUpload, buildUploading } from "./upload";
 import { renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
-import { formatTaskDuration, taskElapsedMs } from "../core/timer";
+import { compactTaskTitle, formatTaskDuration, taskElapsedMs } from "../core/timer";
 import { sessionRailContent } from "../core/session-rail";
 import { displayPercent, formatResetTime, usageFreshness, usageSeverity } from "../core/usage";
 
@@ -261,9 +261,10 @@ function buildOverview(actions: ViewActions): ViewHost {
         clear(projectName);
         projectName.title = task.name;
         projectName.append(dot(task.color, 7), h("span", { class: "session-name-text", text: task.name, title: task.name }));
-        taskTitle.textContent = task.taskTitle;
-        taskTitle.title = task.taskTitle;
-        taskTitle.style.display = task.taskTitle ? "" : "none";
+        const visibleTaskTitle = compactTaskTitle(task.taskTitle);
+        taskTitle.textContent = visibleTaskTitle;
+        taskTitle.title = task.taskTitle || visibleTaskTitle;
+        taskTitle.style.display = "";
         const elapsed = taskElapsedMs(task);
         taskTimer.textContent = formatTaskDuration(elapsed);
         taskTimer.style.display = task.taskStartedAt == null ? "none" : "";

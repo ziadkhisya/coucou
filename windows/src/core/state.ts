@@ -33,6 +33,9 @@ export interface AgentTask {
   lastSemanticMessage: string;
   taskStartedAt: number | null;
   taskFinishedAt: number | null;
+  /** Persists across turns for a user-level /goal, unlike a normal turn timer. */
+  goalStartedAt: number | null;
+  goalActive: boolean;
   source: AgentSource;
   isIntegration: boolean;
   /** Provider/session identity for dynamically-created coding sessions. */
@@ -79,8 +82,34 @@ export interface SearchResult {
 const task = (
   id: string, name: string, color: string, source: AgentSource,
 ): AgentTask => ({
-  id, name, color, state: "idle", stepIndex: 0, stepRevision: 0, activityOrder: 0, steps: [], planSteps: [], hasStructuredPlan: false, completedPlanCount: 0, totalPlanCount: 0, taskTitle: "", currentStatus: "", lastSemanticMessage: "", taskStartedAt: null, taskFinishedAt: null, source, isIntegration: true, pillBadge: null,
+  id, name, color, state: "idle", stepIndex: 0, stepRevision: 0, activityOrder: 0, steps: [], planSteps: [], hasStructuredPlan: false, completedPlanCount: 0, totalPlanCount: 0, taskTitle: "", currentStatus: "", lastSemanticMessage: "", taskStartedAt: null, taskFinishedAt: null, goalStartedAt: null, goalActive: false, source, isIntegration: true, pillBadge: null,
 });
+
+const GOAL_TIMER_STORAGE = "coucou.codex-goal-timers.v1";
+type PersistedGoalTimer = { provider: CodeProvider; sessionId: string; startedAt: number; taskTitle: string };
+
+function readGoalTimers(): PersistedGoalTimer[] {
+  try {
+    const raw = globalThis.localStorage?.getItem(GOAL_TIMER_STORAGE);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is PersistedGoalTimer =>
+      item && (item.provider === "codex" || item.provider === "claude") &&
+      typeof item.sessionId === "string" && Number.isFinite(item.startedAt) &&
+      typeof item.taskTitle === "string");
+  } catch { return []; }
+}
+
+function writeGoalTimer(task: AgentTask) {
+  if (!task.provider || !task.sessionId) return;
+  try {
+    const timers = readGoalTimers().filter((item) => !(item.provider === task.provider && item.sessionId === task.sessionId));
+    if (task.goalActive && task.goalStartedAt != null) {
+      timers.push({ provider: task.provider, sessionId: task.sessionId, startedAt: task.goalStartedAt, taskTitle: task.taskTitle });
+    }
+    globalThis.localStorage?.setItem(GOAL_TIMER_STORAGE, JSON.stringify(timers));
+  } catch { /* Persistence is best-effort and must never affect Codex hooks. */ }
+}
 
 /** AgentTask.integrationAgents — same ids, names and colours as macOS. */
 export const INTEGRATION_AGENTS: AgentTask[] = [
@@ -254,6 +283,7 @@ class AppState {
 
   private touchTask(task: AgentTask) {
     task.activityOrder = ++this.activityClock;
+    if (task.provider && task.sessionId) writeGoalTimer(task);
   }
 
   setFocus(id: string) {
@@ -314,18 +344,33 @@ class AppState {
     this.notify();
   }
 
-  resetTask(id: string, startedAt = Date.now()) {
+  resetTask(id: string, startedAt = Date.now(), startsGoal = false) {
     const t = this.tasks.find((x) => x.id === id);
     if (!t) return;
+    if (startsGoal) {
+      t.goalActive = true;
+      t.goalStartedAt = startedAt;
+    }
+    const continueGoal = t.goalActive;
     t.taskStartedAt = startedAt;
     t.taskFinishedAt = null;
-    t.taskTitle = "";
+    if (!continueGoal) t.taskTitle = "";
     t.hasStructuredPlan = false;
     t.planSteps = [];
     t.completedPlanCount = 0;
     t.totalPlanCount = 0;
-    t.currentStatus = "Reviewing project context";
-    t.lastSemanticMessage = "";
+    t.currentStatus = "Reviewing project files";
+    t.lastSemanticMessage = t.currentStatus;
+    this.touchTask(t);
+    this.notify();
+  }
+
+  endGoal(id: string, finishedAt = Date.now()) {
+    const t = this.tasks.find((x) => x.id === id);
+    if (!t || !t.goalActive) return;
+    t.goalActive = false;
+    if (t.goalStartedAt != null) t.taskStartedAt = t.goalStartedAt;
+    t.taskFinishedAt = finishedAt;
     this.touchTask(t);
     this.notify();
   }
@@ -333,7 +378,7 @@ class AppState {
   setTaskTitle(id: string, title: string) {
     const t = this.tasks.find((x) => x.id === id);
     const clean = title.trim();
-    if (!t || !clean || t.taskTitle === clean) return;
+    if (!t || !clean || clean.toLowerCase() === "codex" || t.taskTitle === clean) return;
     t.taskTitle = clean;
     this.touchTask(t);
     this.notify();
@@ -345,6 +390,8 @@ class AppState {
     t.taskTitle = "";
     t.taskStartedAt = null;
     t.taskFinishedAt = null;
+    t.goalStartedAt = null;
+    t.goalActive = false;
     t.currentStatus = "Starting session";
     t.lastSemanticMessage = t.currentStatus;
     this.touchTask(t);
@@ -385,12 +432,21 @@ class AppState {
         lastSemanticMessage: "",
         taskStartedAt: null,
         taskFinishedAt: null,
+        goalStartedAt: null,
+        goalActive: false,
         source: provider === "codex" ? "codex" : "claudeCode",
         isIntegration: false,
         pillBadge: null,
         provider,
         sessionId,
       };
+      const goal = readGoalTimers().find((item) => item.provider === provider && item.sessionId === sessionId);
+      if (goal) {
+        task.goalStartedAt = goal.startedAt;
+        task.goalActive = true;
+        task.taskStartedAt = goal.startedAt;
+        task.taskTitle = goal.taskTitle;
+      }
       this.tasks.push(task);
     }
     // Hook sessions need to stay visible in the pill row even when optional
@@ -410,6 +466,8 @@ class AppState {
     const id = codeSessionTaskId(provider, sessionId);
     const index = this.tasks.findIndex((x) => x.id === id);
     if (index < 0) return;
+    this.tasks[index].goalActive = false;
+    writeGoalTimer(this.tasks[index]);
     this.tasks.splice(index, 1);
     if (this.focusId === id) {
       const nextSession = this.tasks.find((x) => !x.isIntegration);
