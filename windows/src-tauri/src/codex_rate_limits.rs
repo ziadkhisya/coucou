@@ -11,7 +11,6 @@ use crate::log;
 
 const ACTIVE_POLL: Duration = Duration::from_secs(25);
 const QUIET_POLL: Duration = Duration::from_secs(180);
-const RELIABLE_NOTIFICATION_AGE: Duration = Duration::from_secs(60);
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -107,8 +106,7 @@ async fn run_session(app: &AppHandle, mut demand: watch::Receiver<UsageDemand>) 
     let mut requests: HashMap<u64, u64> = HashMap::new();
     let mut request_id = 2_u64;
     let current_demand = *demand.borrow();
-    let mut next_poll = Instant::now() + poll_interval(current_demand, None);
-    let mut last_notification: Option<Instant> = None;
+    let mut next_poll = Instant::now() + poll_interval(current_demand);
     let mut last_refresh_sequence = demand.borrow().refresh_sequence;
     let mut last_logged = (None, None);
 
@@ -144,7 +142,6 @@ async fn run_session(app: &AppHandle, mut demand: watch::Receiver<UsageDemand>) 
                         }
                     }
                 } else if message.get("method").and_then(Value::as_str) == Some("account/rateLimits/updated") {
-                    last_notification = Some(Instant::now());
                     let params = message.get("params").cloned().unwrap_or(Value::Null);
                     let emitted_at = find_emitted_at(&params);
                     log::line(format!("Codex rate-limit rolling update received; receivedAt={received_at}; emittedAt={}", emitted_at.as_ref().map_or_else(|| "unavailable".into(), Value::to_string)));
@@ -165,7 +162,7 @@ async fn run_session(app: &AppHandle, mut demand: watch::Receiver<UsageDemand>) 
                     let started_at = now_ms();
                     send(&mut input, rate_limit_request(request_id)).await?;
                     requests.insert(request_id, started_at);
-                    next_poll = Instant::now() + poll_interval(current, last_notification);
+                    next_poll = Instant::now() + poll_interval(current);
                 }
             }
             _ = &mut timer => {
@@ -178,7 +175,7 @@ async fn run_session(app: &AppHandle, mut demand: watch::Receiver<UsageDemand>) 
                 if requests.len() > 8 {
                     if let Some(oldest) = requests.keys().copied().min() { requests.remove(&oldest); }
                 }
-                next_poll = Instant::now() + poll_interval(current, last_notification);
+                next_poll = Instant::now() + poll_interval(current);
             }
         }
     }
@@ -213,13 +210,13 @@ fn rate_limit_error_category(message: &str) -> &'static str {
     }
 }
 
-fn poll_interval(demand: UsageDemand, last_notification: Option<Instant>) -> Duration {
-    if demand.active {
-        if last_notification.is_some_and(|at| at.elapsed() <= RELIABLE_NOTIFICATION_AGE) {
-            Duration::from_secs(90)
-        } else {
-            ACTIVE_POLL
-        }
+fn poll_interval(demand: UsageDemand) -> Duration {
+    // Codex 0.159.2 did not emit rate-limit update notifications during a
+    // 90-second probe. Keep expanded/active HUD data fresh with bounded polling
+    // even if a future build emits a notification; a single push must not
+    // suppress snapshots for 90 seconds.
+    if demand.active || demand.expanded {
+        ACTIVE_POLL
     } else {
         QUIET_POLL
     }
@@ -278,7 +275,7 @@ fn log_usage_if_changed(source: &str, value: &Value, request_id: Option<u64>, re
 
 #[cfg(test)]
 mod tests {
-    use super::rate_limit_error_category;
+    use super::{poll_interval, rate_limit_error_category, UsageDemand, ACTIVE_POLL, QUIET_POLL};
 
     #[test]
     fn classifies_rate_limit_read_errors_without_logging_raw_messages() {
@@ -287,5 +284,12 @@ mod tests {
         assert_eq!(rate_limit_error_category("not authenticated"), "authentication");
         assert_eq!(rate_limit_error_category("connection timed out"), "timeout");
         assert_eq!(rate_limit_error_category("unexpected failure"), "other");
+    }
+
+    #[test]
+    fn visible_or_active_hud_uses_bounded_freshness_polling() {
+        assert_eq!(poll_interval(UsageDemand { expanded: true, active: false, refresh_sequence: 0 }), ACTIVE_POLL);
+        assert_eq!(poll_interval(UsageDemand { expanded: false, active: true, refresh_sequence: 0 }), ACTIVE_POLL);
+        assert_eq!(poll_interval(UsageDemand::default()), QUIET_POLL);
     }
 }

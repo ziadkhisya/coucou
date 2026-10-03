@@ -134,7 +134,9 @@ function parseCodexUsageInternal(input: unknown, receivedAt: number, meta: Usage
   const unwrapped = unwrap(input);
   if (!unwrapped) return null;
   const source = meta.source ?? (unwrapped.root.method === "account/rateLimits/updated" ? "notification" : "snapshot");
-  const emittedAt = meta.emittedAt ?? findEmittedAt(unwrapped.root, unwrapped.result, unwrapped.bucket);
+  // Rust may emit epoch seconds or milliseconds depending on the Codex build.
+  // Normalize explicit event metadata before comparing snapshots.
+  const emittedAt = epochMs(meta.emittedAt) ?? findEmittedAt(unwrapped.root, unwrapped.result, unwrapped.bucket);
   const enrichedMeta = { ...meta, source, emittedAt };
   const windows = parseWindows(unwrapped.bucket, receivedAt, enrichedMeta, previous);
   if (!windows.fiveHour && !windows.weekly) return null;
@@ -173,7 +175,7 @@ export function mergeCodexUsage(
   const parsed = parseCodexUsageInternal(input, receivedAt, meta, previous);
   if (!parsed) return previous;
   const source = parsed.source ?? "snapshot";
-  const emittedAt = meta.emittedAt ?? parsed.fiveHour?.emittedAt ?? parsed.weekly?.emittedAt ?? null;
+  const emittedAt = parsed.fiveHour?.emittedAt ?? parsed.weekly?.emittedAt ?? null;
   const requestStartedAt = meta.requestStartedAt ?? parsed.fiveHour?.requestStartedAt ?? parsed.weekly?.requestStartedAt ?? null;
 
   if (source === "snapshot" && previous) {

@@ -212,6 +212,24 @@ test("an older full read cannot overwrite a newer rolling update", () => {
   assert.equal(stale.lastRollingUpdateAt, 240);
 });
 
+test("app-server emitted timestamps normalize before rate snapshot race checks", () => {
+  const payload = { rateLimits: {
+    primary: { usedPercent: 20, windowDurationMins: 300 },
+    secondary: { usedPercent: 30, windowDurationMins: 10_080 },
+  } };
+  const seconds = 1_800_000_000;
+  const parsed = usage.parseCodexUsage(payload, seconds * 1000 + 100, { emittedAt: seconds });
+  assert.equal(parsed.fiveHour.emittedAt, seconds * 1000);
+  let current = usage.mergeCodexUsage(parsed, { method: "account/rateLimits/updated", params: {
+    rateLimits: { primary: { usedPercent: 25 } },
+  } }, seconds * 1000 + 300, { source: "notification", emittedAt: seconds + 1 });
+  assert.equal(current.fiveHour.emittedAt, (seconds + 1) * 1000);
+  const staleSnapshot = usage.mergeCodexUsage(current, payload, seconds * 1000 + 500, {
+    source: "snapshot", requestStartedAt: seconds * 1000 - 100,
+  });
+  assert.strictEqual(staleSnapshot, current);
+});
+
 test("usage freshness distinguishes fresh, stale, and unavailable data", () => {
   const fresh = usage.parseCodexUsage({ rateLimits: { primary: { usedPercent: 20, windowDurationMins: 300 } } }, 1_000);
   assert.equal(usage.usageFreshness(fresh, 61_000), "fresh");
