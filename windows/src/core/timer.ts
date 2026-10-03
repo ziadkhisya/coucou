@@ -12,15 +12,14 @@ export function taskElapsedMs(task: Pick<AgentTask, "taskStartedAt" | "taskFinis
 }
 
 export function formatTaskDuration(elapsedMs: number | null): string {
-  if (elapsedMs == null) return "";
-  const seconds = Math.floor(elapsedMs / 1000);
+  if (elapsedMs == null || !Number.isFinite(elapsedMs)) return "";
+  const seconds = Math.max(0, Math.floor(elapsedMs / 1000));
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const minutePart = minutes % 60;
   const secondPart = seconds % 60;
-  if (hours > 0) return `${hours}h ${String(minutePart).padStart(2, "0")}m`;
-  if (minutes > 0) return `${minutes}m ${secondPart}s`;
-  return `${seconds}s`;
+  if (hours > 0) return `${hours}:${String(minutePart).padStart(2, "0")}:${String(secondPart).padStart(2, "0")}`;
+  return `${minutes}:${String(secondPart).padStart(2, "0")}`;
 }
 
 /** Compact identity never substitutes the project/provider name for task intent. */

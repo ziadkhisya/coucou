@@ -6,10 +6,9 @@
     <title>Coucou Codex overview preview</title>
     <style>
       #preview-backdrop { position: fixed; inset: 0; background: #090a0c; }
-      #island { width: 640px !important; transform: translateX(-50%) !important; }
+      body:not(.preview-collapsed) #island { width: 640px !important; transform: translateX(-50%) !important; }
       #content { opacity: 1 !important; }
       .view.on { opacity: 1 !important; }
-      body.preview-collapsed #island { width: 288px !important; }
       body.preview-collapsed #content { opacity: 0 !important; pointer-events: none !important; }
       body.preview-collapsed #compact-progress { opacity: 1 !important; }
       #preview-controls { position: fixed; z-index: 20; top: 244px; left: 8px; right: 8px; max-width: calc(100vw - 16px); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 5px; padding: 7px; border: 1px solid rgba(255,255,255,.09); border-radius: 12px; background: #151619; }

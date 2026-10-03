@@ -157,8 +157,6 @@ function show(kind: string, writeHistory = true) {
   document.body.classList.toggle("preview-collapsed", collapsed);
   const viewName = kind === "approval" || kind === "longpermission" ? "approval" : "overview";
   island.alert(viewName);
-  State.mode = collapsed ? "compact" : "expanded";
-  State.notify();
   document.getElementById("content")!.style.opacity = "1";
   document.querySelectorAll<HTMLElement>(".view").forEach((view) => {
     view.classList.toggle("on", view.classList.contains(viewName));
@@ -187,8 +185,7 @@ function show(kind: string, writeHistory = true) {
     button.classList.toggle("selected", button.dataset.state === kind);
   });
   if (collapsed) {
-    State.mode = "compact";
-    State.notify();
+    island.collapse();
   }
   if (updateTimer != null) window.clearTimeout(updateTimer);
   updateTimer = kind === "update" ? window.setTimeout(advancePlanPreview, 1800) : undefined;
@@ -199,8 +196,8 @@ document.querySelectorAll<HTMLButtonElement>("#preview-controls button").forEach
     if (button.hasAttribute("data-toggle-compact")) {
       const collapsed = !document.body.classList.contains("preview-collapsed");
       document.body.classList.toggle("preview-collapsed", collapsed);
-      State.mode = collapsed ? "compact" : "expanded";
-      State.notify();
+      if (collapsed) island.collapse();
+      else island.alert("overview");
       return;
     }
     show(button.dataset.state ?? "one");

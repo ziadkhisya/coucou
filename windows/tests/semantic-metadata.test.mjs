@@ -55,6 +55,14 @@ test("plan labels drop redundant status markers and prefixes", () => {
     "inspect usage source", "fix refresh behavior", "validate live values", "tracing drift",
   ]);
   assert.equal(planParser.normalizePlanStepText("In progress — validate the installed build"), "validate the installed build");
+  const imperative = planParser.parseUpdatePlan({ steps: [
+    { text: "Complete the migration", status: "pending" },
+    { text: "Current workspace identity", status: "in_progress" },
+    { text: "Currently: validate the installed build", status: "pending" },
+  ] });
+  assert.deepEqual(imperative.map((step) => step.text), [
+    "Complete the migration", "Current workspace identity", "validate the installed build",
+  ]);
 });
 
 test("task clock resets on new task, freezes at finish, and formats both ranges", () => {
@@ -65,16 +73,16 @@ test("task clock resets on new task, freezes at finish, and formats both ranges"
   State.updateTask(id, "finished");
   const finishedAt = State.tasks[0].taskFinishedAt;
   assert.equal(timers.taskElapsedMs(State.tasks[0], finishedAt + 50_000), finishedAt - 10_000);
-  assert.equal(timers.formatTaskDuration(1_122_000), "18m 42s");
-  assert.equal(timers.formatTaskDuration(4_053_000), "1h 07m");
+  assert.equal(timers.formatTaskDuration(1_122_000), "18:42");
+  assert.equal(timers.formatTaskDuration(4_053_000), "1:07:33");
   State.setFocus("integration_codex");
   assert.equal(timers.taskElapsedMs(State.tasks.find((task) => task.id === id), finishedAt + 90_000), finishedAt - 10_000);
   State.resetTask(id, 20_000);
   assert.equal(State.tasks.find((task) => task.id === id).taskStartedAt, 20_000);
-  assert.equal(timers.formatTaskDuration(5_000), "5s");
-  assert.equal(timers.formatTaskDuration(65_000), "1m 5s");
-  assert.equal(timers.formatTaskDuration(0), "0s");
-  assert.equal(timers.formatTaskDuration(3_667_000), "1h 01m");
+  assert.equal(timers.formatTaskDuration(5_000), "0:05");
+  assert.equal(timers.formatTaskDuration(65_000), "1:05");
+  assert.equal(timers.formatTaskDuration(0), "0:00");
+  assert.equal(timers.formatTaskDuration(3_667_000), "1:01:07");
   assert.equal(timers.compactTaskTitle("Codex"), "Starting task");
   assert.equal(timers.compactTaskTitle(""), "Starting task");
   assert.equal(timers.compactTaskTitle("Fix product importer"), "Fix product importer");
@@ -216,10 +224,13 @@ test("multiple sessions retain separate task clocks and titles", () => {
   State.resetTask(a, 1_000); State.setTaskTitle(a, "Fix progress");
   State.resetTask(b, 9_000); State.setTaskTitle(b, "Polish landing page");
   State.codexUsage = { available: true, fetchedAt: 1, fiveHour: { usedPercent: 0, remainingPercent: 100, windowDurationMins: 300, resetsAt: null, limitId: "codex", source: "snapshot", receivedAt: 1, emittedAt: null, requestStartedAt: null } };
+  const accountUsage = State.codexUsage;
   State.setFocus(b);
   assert.equal(State.tasks.find((task) => task.id === a).taskTitle, "Fix progress");
   assert.equal(State.tasks.find((task) => task.id === b).taskStartedAt, 9_000);
-  assert.equal(State.codexUsage.fiveHour.remainingPercent, 100);
+  assert.strictEqual(State.codexUsage, accountUsage, "account usage stays shared when session focus changes");
+  State.setFocus(a);
+  assert.strictEqual(State.codexUsage, accountUsage);
 });
 
 test("session rail keeps the timer separate from semantic progress and truncatable status", () => {
@@ -231,9 +242,9 @@ test("session rail keeps the timer separate from semantic progress and truncatab
     provider: "codex", sessionId: "rail-session",
   };
   const content = rail.sessionRailContent(task, 1_122_000);
-  assert.equal(content.timer, "18m 42s");
+  assert.equal(content.timer, "18:42");
   assert.match(content.status, /^2\/5 · Comparing/);
-  assert.doesNotMatch(content.status, /18m 42s|PowerShell|command/i);
+  assert.doesNotMatch(content.status, /18:42|PowerShell|command/i);
   assert.match(content.title, /Research workspace/);
 });
 
@@ -247,7 +258,7 @@ test("session rail titles use the deterministic preview clock", () => {
     provider: "codex", sessionId: "rail-clock-session",
   };
   const content = rail.sessionRailContent(task);
-  assert.equal(content.timer, "18m 42s");
-  assert.equal(content.title, "Coucou · Updating progress · 18m 42s");
+  assert.equal(content.timer, "18:42");
+  assert.equal(content.title, "Coucou · Updating progress · 18:42");
   delete globalThis.__COUCOU_PREVIEW_NOW;
 });
