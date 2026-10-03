@@ -215,10 +215,13 @@ function buildOverview(actions: ViewActions): ViewHost {
             const task = State.tasks.find((item) => item.id === pill.dataset.taskId);
             const timer = pill.querySelector<HTMLElement>(".session-pill-timer");
             if (!task || !timer) continue;
-            const elapsed = taskElapsedMs(task);
-            const next = formatTaskDuration(elapsed);
+            const summary = sessionRailContent(task);
+            const next = summary.timer;
             if (timer.textContent !== next) timer.textContent = next;
             timer.style.display = task.taskStartedAt == null ? "none" : "";
+            if (pill.title !== summary.title) pill.title = summary.title;
+            const label = `Focus ${summary.title}`;
+            if (pill.getAttribute("aria-label") !== label) pill.setAttribute("aria-label", label);
           }
         }
       }

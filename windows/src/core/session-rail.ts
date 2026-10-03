@@ -8,7 +8,7 @@ export interface SessionRailContent {
 }
 
 /** Compact semantic rail copy with timer kept in its own non-truncating region. */
-export function sessionRailContent(task: AgentTask, now = Date.now()): SessionRailContent {
+export function sessionRailContent(task: AgentTask, now?: number): SessionRailContent {
   const state = task.state === "working" ? "Working"
     : task.state === "thinking" ? "Thinking"
     : task.state === "searching" ? "Researching"

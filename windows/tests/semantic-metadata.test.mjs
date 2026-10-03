@@ -193,3 +193,18 @@ test("session rail keeps the timer separate from semantic progress and truncatab
   assert.doesNotMatch(content.status, /18:42|PowerShell|command/i);
   assert.match(content.title, /Research workspace/);
 });
+
+test("session rail titles use the deterministic preview clock", () => {
+  globalThis.__COUCOU_PREVIEW_NOW = 1_122_000;
+  const task = {
+    id: "rail-clock", name: "Coucou", color: "#35A67A", state: "working",
+    stepIndex: 0, stepRevision: 0, activityOrder: 0, steps: [], planSteps: [], hasStructuredPlan: false,
+    completedPlanCount: 0, totalPlanCount: 0, taskTitle: "Fix timer summary", currentStatus: "Updating progress",
+    lastSemanticMessage: "", taskStartedAt: 0, taskFinishedAt: null, source: "codex", isIntegration: false,
+    provider: "codex", sessionId: "rail-clock-session",
+  };
+  const content = rail.sessionRailContent(task);
+  assert.equal(content.timer, "18:42");
+  assert.equal(content.title, "Coucou · Updating progress · 18:42");
+  delete globalThis.__COUCOU_PREVIEW_NOW;
+});
